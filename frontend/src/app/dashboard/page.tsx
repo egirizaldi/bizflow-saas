@@ -1,0 +1,1332 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  getStoredUser,
+  clearAuthSession,
+  AuthUser,
+  AuthOrganization,
+  switchOrganization,
+} from '@/lib/auth';
+import { apiRequest } from '@/lib/api';
+import { Can } from '@/components/can';
+import {
+  Building2,
+  Users,
+  ShieldCheck,
+  CreditCard,
+  LogOut,
+  PlusCircle,
+  Activity,
+  Layers,
+  ChevronDown,
+  X,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  FolderKanban,
+  Trash2,
+  KeyRound,
+  Mail,
+  UserPlus,
+  Lock,
+  Copy,
+  Clock,
+  BarChart3,
+  TrendingUp,
+  PieChart as PieIcon,
+  Check,
+} from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
+import Cookies from 'js-cookie';
+
+const ROLE_COLORS: Record<string, string> = {
+  OWNER: '#4f46e5', // Indigo
+  ADMIN: '#0284c7', // Sky
+  MANAGER: '#10b981', // Emerald
+  STAFF: '#94a3b8', // Slate
+};
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [organizations, setOrganizations] = useState<AuthOrganization[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'projects' | 'team' | 'analytics'>('projects');
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
+
+  // Projects State
+  const [projects, setProjects] = useState<any[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [projectDesc, setProjectDesc] = useState('');
+  const [isSubmittingProject, setIsSubmittingProject] = useState(false);
+  const [projectError, setProjectError] = useState('');
+
+  // Team Management State
+  const [members, setMembers] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'ADMIN' | 'MANAGER' | 'STAFF'>('STAFF');
+  const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteSuccess, setInviteSuccess] = useState('');
+
+  // Analytics Metrics State
+  const [metrics, setMetrics] = useState<any>(null);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+
+  // Organization Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [orgName, setOrgName] = useState('');
+  const [orgSlug, setOrgSlug] = useState('');
+  const [billingEmail, setBillingEmail] = useState('');
+  const [isSubmittingOrg, setIsSubmittingOrg] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+
+  // RBAC Matrix toggle
+  const [showRbacModal, setShowRbacModal] = useState(false);
+
+  const fetchOrganizations = async () => {
+    try {
+      setIsLoadingOrgs(true);
+      const res = await apiRequest('/organizations/my');
+      if (res?.organizations) {
+        setOrganizations(res.organizations);
+
+        const savedOrgId = Cookies.get('currentOrgId');
+        const validOrg = res.organizations.find((o: any) => o.id === savedOrgId);
+
+        if (validOrg) {
+          setActiveOrgId(validOrg.id);
+          fetchProjects(validOrg.id);
+          fetchTeam(validOrg.id);
+          fetchMetrics(validOrg.id);
+        } else if (res.organizations.length > 0) {
+          const firstOrgId = res.organizations[0].id;
+          setActiveOrgId(firstOrgId);
+          Cookies.set('currentOrgId', firstOrgId, { expires: 7 });
+          fetchProjects(firstOrgId);
+          fetchTeam(firstOrgId);
+          fetchMetrics(firstOrgId);
+        }
+      }
+    } catch {
+      const savedUser = getStoredUser();
+      if (savedUser) setUser(savedUser);
+    } finally {
+      setIsLoadingOrgs(false);
+    }
+  };
+
+  const fetchProjects = async (orgId?: string) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingProjects(true);
+      const res = await apiRequest('/projects', {
+        headers: { 'x-organization-id': targetOrg },
+      });
+      if (res?.projects) {
+        setProjects(res.projects);
+      }
+    } catch {
+      setProjects([]);
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  const fetchTeam = async (orgId?: string) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingTeam(true);
+      const [membersRes, invitesRes] = await Promise.all([
+        apiRequest(`/organizations/${targetOrg}/members`, {
+          headers: { 'x-organization-id': targetOrg },
+        }).catch(() => ({ members: [] })),
+        apiRequest(`/organizations/${targetOrg}/invitations`, {
+          headers: { 'x-organization-id': targetOrg },
+        }).catch(() => ({ invitations: [] })),
+      ]);
+
+      if (membersRes?.members) setMembers(membersRes.members);
+      if (invitesRes?.invitations) setInvitations(invitesRes.invitations);
+    } catch {
+      setMembers([]);
+    } finally {
+      setIsLoadingTeam(false);
+    }
+  };
+
+  const fetchMetrics = async (orgId?: string) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingMetrics(true);
+      const res = await apiRequest('/dashboard/metrics', {
+        headers: { 'x-organization-id': targetOrg },
+      });
+      if (res?.metrics) {
+        setMetrics(res.metrics);
+      }
+    } catch {
+      setMetrics(null);
+    } finally {
+      setIsLoadingMetrics(false);
+    }
+  };
+
+  useEffect(() => {
+    const loadedUser = getStoredUser();
+    if (loadedUser) {
+      setUser(loadedUser);
+    }
+    fetchOrganizations();
+  }, []);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    router.push('/login');
+  };
+
+  const handleCreateOrg = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingOrg(true);
+    setFormError('');
+    setFormSuccess('');
+
+    try {
+      const payload: any = { name: orgName };
+      if (orgSlug.trim()) payload.slug = orgSlug.trim();
+      if (billingEmail.trim()) payload.billingEmail = billingEmail.trim();
+
+      const res = await apiRequest('/organizations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (res?.organization) {
+        setFormSuccess('Organisasi berhasil dibuat!');
+        setOrgName('');
+        setOrgSlug('');
+        setBillingEmail('');
+
+        const newOrg = res.organization;
+        Cookies.set('currentOrgId', newOrg.id, { expires: 7 });
+        setActiveOrgId(newOrg.id);
+
+        setTimeout(() => {
+          setIsModalOpen(false);
+          setFormSuccess('');
+          fetchOrganizations();
+        }, 800);
+      }
+    } catch (err: any) {
+      setFormError(err.message || 'Gagal membuat organisasi.');
+    } finally {
+      setIsSubmittingOrg(false);
+    }
+  };
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeOrgId) return;
+
+    setIsSubmittingProject(true);
+    setProjectError('');
+
+    try {
+      await apiRequest('/projects', {
+        method: 'POST',
+        headers: { 'x-organization-id': activeOrgId },
+        body: JSON.stringify({
+          name: projectName,
+          description: projectDesc,
+        }),
+      });
+
+      setProjectName('');
+      setProjectDesc('');
+      setIsProjectModalOpen(false);
+      fetchProjects(activeOrgId);
+      fetchMetrics(activeOrgId);
+    } catch (err: any) {
+      setProjectError(err.message || 'Gagal membuat project.');
+    } finally {
+      setIsSubmittingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm('Yakin ingin menghapus project ini?')) return;
+    try {
+      await apiRequest(`/projects/${projectId}`, {
+        method: 'DELETE',
+        headers: { 'x-organization-id': activeOrgId },
+      });
+      fetchProjects(activeOrgId);
+      fetchMetrics(activeOrgId);
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus project.');
+    }
+  };
+
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeOrgId) return;
+
+    setIsSubmittingInvite(true);
+    setInviteError('');
+    setInviteSuccess('');
+
+    try {
+      const res = await apiRequest(`/organizations/${activeOrgId}/invitations`, {
+        method: 'POST',
+        headers: { 'x-organization-id': activeOrgId },
+        body: JSON.stringify({
+          email: inviteEmail,
+          role: inviteRole,
+        }),
+      });
+
+      if (res?.invitation) {
+        setInviteSuccess(`Undangan berhasil dibuat! Token: ${res.invitation.token}`);
+        setInviteEmail('');
+        fetchTeam(activeOrgId);
+        fetchMetrics(activeOrgId);
+      }
+    } catch (err: any) {
+      setInviteError(err.message || 'Gagal mengundang anggota.');
+    } finally {
+      setIsSubmittingInvite(false);
+    }
+  };
+
+  const handleChangeRole = async (memberId: string, newRole: string) => {
+    try {
+      await apiRequest(`/organizations/${activeOrgId}/members/${memberId}`, {
+        method: 'PATCH',
+        headers: { 'x-organization-id': activeOrgId },
+        body: JSON.stringify({ role: newRole }),
+      });
+      fetchTeam(activeOrgId);
+      fetchMetrics(activeOrgId);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengubah role anggota.');
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (!confirm(`Keluarkan ${memberName} dari organisasi ini?`)) return;
+    try {
+      await apiRequest(`/organizations/${activeOrgId}/members/${memberId}`, {
+        method: 'DELETE',
+        headers: { 'x-organization-id': activeOrgId },
+      });
+      fetchTeam(activeOrgId);
+      fetchMetrics(activeOrgId);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengeluarkan anggota.');
+    }
+  };
+
+  const activeOrg = organizations.find((o) => o.id === activeOrgId);
+  const userRole = activeOrg?.role || 'OWNER';
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Top Navigation */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 text-indigo-600 font-bold text-xl tracking-tight">
+              <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-sm">
+                <Building2 className="w-5 h-5" />
+              </div>
+              BizFlow SaaS
+            </div>
+
+            {/* Dynamic Workspace Switcher */}
+            <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
+              <span className="text-xs font-semibold uppercase text-slate-400 hidden sm:inline">Workspace:</span>
+              {organizations.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={activeOrgId}
+                    onChange={(e) => {
+                      if (e.target.value === 'NEW_ORG') {
+                        setIsModalOpen(true);
+                      } else {
+                        switchOrganization(e.target.value);
+                      }
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold py-1.5 px-3 pr-8 rounded-lg border-0 focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none transition"
+                  >
+                    {organizations.map((org: any) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name} ({org.role})
+                      </option>
+                    ))}
+                    <option value="NEW_ORG">+ Tambah Organisasi Baru</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none" />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 font-semibold inline-flex items-center gap-1.5 transition"
+                >
+                  <PlusCircle className="w-3.5 h-3.5" />
+                  Buat Workspace Pertama
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <div className="text-sm font-semibold text-slate-800">{user?.fullName || 'Pengguna'}</div>
+              <div className="text-xs text-slate-500">{user?.email || 'email@bizflow.com'}</div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+              title="Keluar"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Banner */}
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-2xl p-6 sm:p-8 text-white shadow-sm mb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-indigo-500/30 text-indigo-100 px-3 py-1 rounded-full text-xs font-medium mb-3 backdrop-blur-sm">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Dashboard Analytics & Metrik Aktif ({userRole})
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              {activeOrg ? activeOrg.name : `Halo, ${user?.fullName || 'User'}!`}
+            </h1>
+            <p className="mt-1 text-indigo-100 text-sm max-w-2xl">
+              Pantau performa tren aktivitas tim, pertumbuhan project, dan utilisasi kuota paket langganan secara visual dan real-time.
+            </p>
+          </div>
+
+          <div className="flex-shrink-0 flex items-center gap-3">
+            <button
+              onClick={() => setShowRbacModal(true)}
+              className="inline-flex items-center gap-2 bg-indigo-500/40 hover:bg-indigo-500/60 text-white font-semibold text-sm px-4 py-2.5 rounded-xl border border-indigo-300/30 backdrop-blur-sm transition"
+            >
+              <KeyRound className="w-4 h-4" />
+              Hak Akses
+            </button>
+
+            <Can currentRole={userRole} roles={['OWNER', 'ADMIN', 'MANAGER']}>
+              <button
+                onClick={() => setIsProjectModalOpen(true)}
+                disabled={!activeOrgId}
+                className="inline-flex items-center gap-2 bg-white text-indigo-600 hover:bg-indigo-50 font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition disabled:opacity-50"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Project Baru
+              </button>
+            </Can>
+          </div>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-3 border-b border-slate-200 mb-6 pb-2">
+          <button
+            onClick={() => setActiveTab('projects')}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === 'projects'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <FolderKanban className="w-4 h-4" />
+            Project ({projects.length})
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('team');
+              fetchTeam(activeOrgId);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === 'team'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Tim ({members.length})
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('analytics');
+              fetchMetrics(activeOrgId);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === 'analytics'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Analytics & Metrik
+          </button>
+        </div>
+
+        {/* TAB 1: PROJECTS */}
+        {activeTab === 'projects' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Project Terdaftar</h2>
+                <p className="text-sm text-slate-500">
+                  Data project operasional terisolasi untuk workspace ini.
+                </p>
+              </div>
+
+              <Can currentRole={userRole} roles={['OWNER', 'ADMIN', 'MANAGER']}>
+                <button
+                  onClick={() => setIsProjectModalOpen(true)}
+                  disabled={!activeOrgId}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Project Baru
+                </button>
+              </Can>
+            </div>
+
+            {isLoadingProjects ? (
+              <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                <span>Memuat project...</span>
+              </div>
+            ) : projects.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {projects.map((proj: any) => (
+                  <div
+                    key={proj.id}
+                    className="p-5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-indigo-300 hover:shadow-sm transition flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-slate-900 text-base">{proj.name}</h3>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {proj.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-2 line-clamp-2">
+                        {proj.description || 'Tidak ada deskripsi.'}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-400">
+                      <span>Oleh: {proj.createdBy?.fullName || 'Member'}</span>
+
+                      <Can currentRole={userRole} roles={['OWNER', 'ADMIN']}>
+                        <button
+                          onClick={() => handleDeleteProject(proj.id)}
+                          className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                          title="Hapus Project (Wewenang Owner/Admin)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Can>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                <FolderKanban className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-700">Belum ada project di workspace ini</p>
+                <p className="text-xs text-slate-500 mt-1 mb-4">
+                  Buat project baru untuk mulai mengatur tugas operasional tim Anda.
+                </p>
+                <Can currentRole={userRole} roles={['OWNER', 'ADMIN', 'MANAGER']}>
+                  <button
+                    onClick={() => setIsProjectModalOpen(true)}
+                    disabled={!activeOrgId}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition disabled:opacity-50"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Tambah Project Sekarang
+                  </button>
+                </Can>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: TEAM MANAGEMENT */}
+        {activeTab === 'team' && (
+          <div className="space-y-8">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Daftar Anggota Tim</h2>
+                  <p className="text-sm text-slate-500">
+                    Anggota terdaftar yang memiliki hak akses ke workspace ini.
+                  </p>
+                </div>
+
+                <Can currentRole={userRole} roles={['OWNER', 'ADMIN']}>
+                  <button
+                    onClick={() => setIsInviteModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm transition"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    Undang Anggota
+                  </button>
+                </Can>
+              </div>
+
+              {isLoadingTeam ? (
+                <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                  <span>Memuat anggota tim...</span>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                      <tr>
+                        <th className="p-3 font-semibold">Nama Lengkap</th>
+                        <th className="p-3 font-semibold">Email</th>
+                        <th className="p-3 font-semibold">Peran (Role)</th>
+                        <th className="p-3 font-semibold">Status</th>
+                        <th className="p-3 font-semibold text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-600">
+                      {members.map((m: any) => {
+                        const isSelf = m.userId === user?.id;
+                        const isOwner = m.role === 'OWNER';
+
+                        return (
+                          <tr key={m.memberId} className="hover:bg-slate-50/50">
+                            <td className="p-3 font-semibold text-slate-900 flex items-center gap-2">
+                              <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs uppercase">
+                                {m.fullName?.charAt(0) || 'U'}
+                              </div>
+                              {m.fullName}
+                              {isSelf && (
+                                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-normal">
+                                  Anda
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 font-mono">{m.email}</td>
+                            <td className="p-3">
+                              <Can
+                                currentRole={userRole}
+                                roles={['OWNER', 'ADMIN']}
+                                fallback={
+                                  <span className="px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-700 text-[11px]">
+                                    {m.role}
+                                  </span>
+                                }
+                              >
+                                {isOwner ? (
+                                  <span className="px-2.5 py-1 rounded-full font-bold bg-amber-50 text-amber-700 border border-amber-200 text-[11px] inline-flex items-center gap-1">
+                                    👑 OWNER
+                                  </span>
+                                ) : (
+                                  <select
+                                    value={m.role}
+                                    onChange={(e) => handleChangeRole(m.memberId, e.target.value)}
+                                    className="bg-slate-100 text-slate-800 text-xs font-semibold py-1 px-2 rounded-lg border-0 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                                  >
+                                    <option value="ADMIN">ADMIN</option>
+                                    <option value="MANAGER">MANAGER</option>
+                                    <option value="STAFF">STAFF</option>
+                                  </select>
+                                )}
+                              </Can>
+                            </td>
+                            <td className="p-3">
+                              <span className="px-2 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 text-[11px]">
+                                {m.status}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <Can currentRole={userRole} roles={['OWNER', 'ADMIN']}>
+                                {!isOwner && !isSelf && (
+                                  <button
+                                    onClick={() => handleRemoveMember(m.memberId, m.fullName)}
+                                    className="text-slate-400 hover:text-red-600 p-1 rounded transition text-xs font-medium inline-flex items-center gap-1"
+                                    title="Keluarkan dari organisasi"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    Kick
+                                  </button>
+                                )}
+                              </Can>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Pending Invitations Section */}
+            {invitations.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <h3 className="text-base font-bold text-slate-900 mb-1 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  Undangan Menunggu Konfirmasi ({invitations.length})
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Tautan undangan berikut berlaku selama 48 jam sejak dibuat.
+                </p>
+
+                <div className="divide-y divide-slate-100 text-xs">
+                  {invitations.map((inv: any) => (
+                    <div key={inv.id} className="py-3 flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-semibold text-slate-800">{inv.email}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">
+                          Role: <span className="font-semibold text-indigo-600">{inv.role}</span> • Status: {inv.status}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(inv.token);
+                            alert(`Token undangan disalin: ${inv.token}`);
+                          }}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium inline-flex items-center gap-1 text-[11px]"
+                        >
+                          <Copy className="w-3 h-3" />
+                          Salin Token
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: ANALYTICS & METRICS */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-8">
+            {isLoadingMetrics ? (
+              <div className="py-16 text-center text-slate-400 flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200">
+                <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                <span>Menghitung metrik analitik tenant...</span>
+              </div>
+            ) : metrics ? (
+              <>
+                {/* Quota & Subscription Status Bar */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Kapasitas Anggota Tim
+                    </span>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-extrabold text-slate-900">
+                        {metrics.totalMembers}
+                      </span>
+                      <span className="text-sm font-medium text-slate-500">
+                        / {metrics.maxMembersQuota} Member
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-100 h-2 rounded-full mt-4 overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            (metrics.totalMembers / metrics.maxMembersQuota) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-slate-400 mt-2 block">
+                      Paket {metrics.subscription?.planName} ({Math.round(
+                        (metrics.totalMembers / metrics.maxMembersQuota) * 100,
+                      )}% terpakai)
+                    </span>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Masa Aktif Langganan
+                    </span>
+                    <div className="text-3xl font-extrabold text-slate-900">
+                      {metrics.subscription?.daysRemaining} Hari
+                    </div>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Status: {metrics.subscription?.status}
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        Plan: {metrics.subscription?.planName}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                      Fitur Berbayar Aktif
+                    </span>
+                    <div className="mt-3 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Export Laporan PDF/Excel</span>
+                        <span
+                          className={`font-semibold ${
+                            metrics.subscription?.canExportReports
+                              ? 'text-emerald-600'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {metrics.subscription?.canExportReports ? '✅ Aktif' : '🔒 Khusus Business'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Audit Activity Logs</span>
+                        <span
+                          className={`font-semibold ${
+                            metrics.subscription?.canViewAuditLogs
+                              ? 'text-emerald-600'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {metrics.subscription?.canViewAuditLogs ? '✅ Aktif' : '🔒 Khusus Business'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Charts Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Chart 1: Bar Chart Monthly Activity */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                          <TrendingUp className="w-5 h-5 text-indigo-600" />
+                          Tren Pembuatan Project (6 Bulan Terakhir)
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Aktivitas inisiasi operasional bulanan di workspace {activeOrg?.name}.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={metrics.monthlyActivityTrend}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                          <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} />
+                          <YAxis allowDecimals={false} stroke="#94a3b8" fontSize={11} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#ffffff',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              fontSize: '12px',
+                            }}
+                          />
+                          <Bar dataKey="projects" fill="#4f46e5" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Chart 2: Donut Chart Role Distribution */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                          <PieIcon className="w-5 h-5 text-indigo-600" />
+                          Distribusi Peran Anggota (RBAC)
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Proporsi pembagian peran wewenang di tim Anda.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={metrics.roleDistribution}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="count"
+                          >
+                            {metrics.roleDistribution?.map((entry: any) => (
+                              <Cell
+                                key={`cell-${entry.name}`}
+                                fill={ROLE_COLORS[entry.name] || '#cbd5e1'}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#ffffff',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              fontSize: '12px',
+                            }}
+                          />
+                          <Legend
+                            verticalAlign="bottom"
+                            height={36}
+                            formatter={(value) => (
+                              <span className="text-xs font-semibold text-slate-700">
+                                {value}
+                              </span>
+                            )}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        )}
+      </main>
+
+      {/* Modal Undang Anggota Baru */}
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-indigo-600" />
+                Undang Anggota ke Workspace
+              </h3>
+              <button
+                onClick={() => {
+                  setIsInviteModalOpen(false);
+                  setInviteError('');
+                  setInviteSuccess('');
+                }}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {inviteError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{inviteError}</span>
+              </div>
+            )}
+
+            {inviteSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs break-all">
+                <div className="flex items-center gap-1.5 font-bold mb-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  Undangan Berhasil Dibuat!
+                </div>
+                <span>{inviteSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleInviteMember} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Email Calon Anggota *
+                </label>
+                <div className="relative rounded-xl">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="rekan@perusahaan.com"
+                    className="w-full text-sm pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Peran / Hak Akses (Role) *
+                </label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as any)}
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                >
+                  <option value="STAFF">STAFF (Hanya melihat operasional)</option>
+                  <option value="MANAGER">MANAGER (Bisa membuat project & melihat laporan)</option>
+                  <option value="ADMIN">ADMIN (Wewenang penuh operasional tim)</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingInvite || !inviteEmail.trim()}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  {isSubmittingInvite ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Membuat Undangan...
+                    </>
+                  ) : (
+                    'Kirim Undangan'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Matriks Hak Akses RBAC */}
+      {showRbacModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-indigo-600" />
+                Matriks Hak Akses RBAC (Role-Based Access Control)
+              </h3>
+              <button
+                onClick={() => setShowRbacModal(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 mb-4">
+              Role aktif Anda di organisasi ini:{' '}
+              <span className="font-bold text-indigo-600 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200">
+                {userRole}
+              </span>
+            </p>
+
+            <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                  <tr>
+                    <th className="p-3 font-semibold">Fitur / Tindakan</th>
+                    <th className="p-3 text-center font-semibold">Owner</th>
+                    <th className="p-3 text-center font-semibold">Admin</th>
+                    <th className="p-3 text-center font-semibold">Manager</th>
+                    <th className="p-3 text-center font-semibold">Staff</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-600">
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Lihat Dashboard & Project</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Buat Project Baru</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Hapus Project</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Undang Anggota Tim</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Ubah Role Anggota Lain</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-medium text-slate-800">Kelola Subscription & Pembayaran</td>
+                    <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                    <td className="p-3 text-center text-slate-300">✗</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowRbacModal(false)}
+                className="px-4 py-2 bg-indigo-600 text-white font-semibold text-xs rounded-xl shadow-sm hover:bg-indigo-700 transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Project (Tenant Resource) */}
+      {isProjectModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <FolderKanban className="w-5 h-5 text-indigo-600" />
+                Tambah Project Baru
+              </h3>
+              <button
+                onClick={() => setIsProjectModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {projectError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{projectError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateProject} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nama Project *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  placeholder="Contoh: ERP System Implementation"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Deskripsi Singkat
+                </label>
+                <textarea
+                  rows={3}
+                  value={projectDesc}
+                  onChange={(e) => setProjectDesc(e.target.value)}
+                  placeholder="Catatan atau ruang lingkup project..."
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsProjectModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingProject || !projectName.trim()}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  {isSubmittingProject ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : (
+                    'Simpan Project'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Organisasi */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-indigo-600" />
+                Tambah Organisasi Baru
+              </h3>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            {formSuccess && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                <span>{formSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateOrg} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nama Organisasi / Perusahaan *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={orgName}
+                  onChange={(e) => {
+                    setOrgName(e.target.value);
+                    if (!orgSlug) {
+                      setOrgSlug(
+                        e.target.value
+                          .toLowerCase()
+                          .replace(/\s+/g, '-')
+                          .replace(/[^a-z0-9-]/g, ''),
+                      );
+                    }
+                  }}
+                  placeholder="Contoh: PT Maju Jaya"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Workspace Slug (URL Identitas)
+                </label>
+                <div className="flex items-center">
+                  <span className="text-xs text-slate-400 bg-slate-100 border border-r-0 border-slate-300 px-3 py-2.5 rounded-l-xl">
+                    bizflow.com/
+                  </span>
+                  <input
+                    type="text"
+                    value={orgSlug}
+                    onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="maju-jaya"
+                    className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-r-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Billing Email (Opsional)
+                </label>
+                <input
+                  type="email"
+                  value={billingEmail}
+                  onChange={(e) => setBillingEmail(e.target.value)}
+                  placeholder="finance@majujaya.com"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingOrg || !orgName.trim()}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition disabled:opacity-60 inline-flex items-center gap-1.5"
+                >
+                  {isSubmittingOrg ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Membuat...
+                    </>
+                  ) : (
+                    'Buat Workspace'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
