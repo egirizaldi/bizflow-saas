@@ -6,28 +6,42 @@ BizFlow adalah platform Software-as-a-Service (SaaS) B2B yang memungkinkan banya
 
 ## 📚 Dokumentasi Proyek
 
-Dokumentasi arsitektur dan spesifikasi proyek telah disusun secara modular di dalam folder `docs/`:
+Dokumentasi arsitektur dan spesifikasi teknis proyek telah disusun secara terperinci di dalam folder `docs/`:
 
-1. **[Product Requirements Document (PRD)](file:///run/media/egi-rizaldi/Data/Download_Ubuntu/project-coba-coba/docs/PRD.md)**
+1. **[Product Requirements Document (PRD)](docs/PRD.md)**
    * Visi produk, problem statement, dan target pengguna.
-   * Matriks peran (RBAC Matrix: Owner, Admin, Manager, Staff).
+   * Matriks peran hak akses (RBAC: Owner, Admin, Manager, Staff).
    * Spesifikasi lengkap fitur utama, tier langganan, dan Non-Functional Requirements (NFR).
 
-2. **[Skill & Kompetensi yang Dibutuhkan](file:///run/media/egi-rizaldi/Data/Download_Ubuntu/project-coba-coba/docs/SKILLS-AND-COMPETENCIES.md)**
-   * Pemetaan keahlian frontend (Next.js, Tailwind, Shadcn UI, Zustand).
-   * Arsitektur backend (NestJS Guards, Interceptors, Decorators).
+2. **[Skill & Kompetensi yang Dibutuhkan](docs/SKILLS-AND-COMPETENCIES.md)**
+   * Pemetaan keahlian frontend (Next.js, Tailwind, Recharts, Lucide).
+   * Arsitektur backend (NestJS Guards, Decorators, Custom Interceptors).
    * Desain database & isolasi tenant (PostgreSQL, Prisma Client Extensions).
-   * Payment Gateway Midtrans, Caching Redis, Docker, dan Learning Roadmap mingguan.
+   * Payment Gateway Midtrans, Docker Compose, dan Nginx.
 
-3. **[Arsitektur Sistem & Desain Database](file:///run/media/egi-rizaldi/Data/Download_Ubuntu/project-coba-coba/docs/SYSTEM-ARCHITECTURE-AND-DATABASE.md)**
+3. **[Arsitektur Sistem & Desain Database](docs/SYSTEM-ARCHITECTURE-AND-DATABASE.md)**
    * Diagram arsitektur decoupled (Client, Gateway, API, DB, Midtrans).
-   * Entity-Relationship Diagram (ERD) dan draf skema Prisma (`schema.prisma`) lengkap.
+   * Entity-Relationship Diagram (ERD) dan skema Prisma (`schema.prisma`) lengkap.
    * Mekanisme implementasi 3 lapis isolasi tenant di NestJS.
-   * Sequence diagram transaksi Midtrans Snap & rekonsiliasi webhook.
+   * Sequence diagram transaksi Midtrans Snap & rekonsiliasi webhook SHA512.
 
-4. **[Roadmap & Checklist Implementasi 12 Tahap](file:///run/media/egi-rizaldi/Data/Download_Ubuntu/project-coba-coba/docs/ROADMAP-AND-CHECKLIST.md)**
+4. **[Roadmap & Checklist Implementasi 12 Tahap](docs/ROADMAP-AND-CHECKLIST.md)**
    * Panduan eksekusi bertahap dari Tahap 1 (Auth) hingga Tahap 12 (VPS Deployment).
-   * Checklist to-do teknis dan *Acceptance Criteria* per tahap.
+   * Checklist to-do teknis dan *Acceptance Criteria* per tahap (100% Selesai).
+
+---
+
+## 🔑 Akun Demo Cepat (Quick Start Credentials)
+
+Setelah menjalankan aplikasi, Anda dapat langsung masuk tanpa perlu mendaftar dari nol:
+
+| Kolom | Kredensial Demo |
+| :--- | :--- |
+| **URL Login** | `http://localhost:3000/login` (atau `http://localhost/login` via Docker) |
+| **Email** | `demo@bizflow.com` |
+| **Password** | `password123` |
+| **Workspace** | `PT Nusantara Solusi Digital` (Peran: `OWNER`) |
+| **Paket Aktif** | **BUSINESS Tier** (Fitur Export Excel, Faktur PDF, dan Audit Trail aktif) |
 
 ---
 
@@ -110,3 +124,51 @@ Semua 12 tahap implementasi produksi telah berhasil diselesaikan 100%:
 10. **Tahap 10: Transactional Email Notifications** (Nodemailer v10.6, Mock Sandbox Fallback, Responsive HTML Templates) ✅
 11. **Tahap 11: Export Laporan PDF & Excel** (ExcelJS Project & Audit Logs, PDFKit Formal A4 Invoices with Plan Gating) ✅
 12. **Tahap 12: Containerization & Production Deployment** (Multi-Stage Dockerfiles, Standalone Next.js, Docker Compose, Nginx Reverse Proxy) ✅
+
+---
+
+## 📁 Struktur Direktori Repositori
+
+```text
+bizflow-saas/
+├── backend/                  # NestJS 12 Application (REST API)
+│   ├── prisma/               # Skema ORM, migrasi, dan seed script
+│   ├── src/
+│   │   ├── analytics/        # Agregasi metrik tenant & Super Admin
+│   │   ├── audit/            # Audit trail & logging mutasi data
+│   │   ├── auth/             # Autentikasi JWT & session guards
+│   │   ├── billing/          # Midtrans Snap & webhook processing
+│   │   ├── common/           # TenantGuard, RolesGuard, decorators
+│   │   ├── mail/             # Nodemailer service & template email
+│   │   ├── organization/     # Workspace & organization management
+│   │   ├── project/          # Project scoping per tenant
+│   │   ├── report/           # Export Excel (.xlsx) & PDF (.pdf)
+│   │   ├── subscription/     # Plan gating & quota enforcement
+│   │   └── team/             # Invitations, roles, & member control
+│   └── Dockerfile            # Multi-stage production container backend
+│
+├── frontend/                 # Next.js 16 (App Router) Web App
+│   ├── src/
+│   │   ├── app/              # Dashboard, login, register, layout
+│   │   ├── components/       # Reusable UI components & Can guard
+│   │   └── lib/              # Auth cookie handlers & API client
+│   └── Dockerfile            # Multi-stage standalone container frontend
+│
+├── docker/
+│   └── nginx/                # Nginx reverse proxy configuration
+│
+├── docs/                     # Dokumentasi arsitektur & PRD komprehensif
+│   ├── PRD.md
+│   ├── SKILLS-AND-COMPETENCIES.md
+│   ├── SYSTEM-ARCHITECTURE-AND-DATABASE.md
+│   └── ROADMAP-AND-CHECKLIST.md
+│
+├── .env.docker.example       # Template konfigurasi environment Docker
+├── docker-compose.yml        # Multi-container orchestration (5 services)
+└── README.md
+```
+
+---
+
+## 📄 Lisensi
+Proyek ini dibuat untuk tujuan demonstrasi dan implementasi arsitektur SaaS produksi berstandar industri. Lisensi terbuka (*UNLICENSED / MIT*).
