@@ -2427,7 +2427,7 @@ export default function DashboardPage() {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     placeholder="rekan@perusahaan.com"
-                    className="w-full text-sm pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                    className="w-full text-sm pl-9 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                   />
                 </div>
               </div>
@@ -2439,7 +2439,7 @@ export default function DashboardPage() {
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value as any)}
-                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 >
                   <option value="STAFF">STAFF (Hanya melihat operasional)</option>
                   <option value="MANAGER">MANAGER (Bisa membuat project & melihat laporan)</option>
@@ -2604,7 +2604,7 @@ export default function DashboardPage() {
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="Contoh: ERP System Implementation"
-                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 />
               </div>
 
@@ -2617,7 +2617,7 @@ export default function DashboardPage() {
                   value={projectDesc}
                   onChange={(e) => setProjectDesc(e.target.value)}
                   placeholder="Catatan atau ruang lingkup project..."
-                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 />
               </div>
 
@@ -2701,7 +2701,7 @@ export default function DashboardPage() {
                     }
                   }}
                   placeholder="Contoh: PT Maju Jaya"
-                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 />
               </div>
 
@@ -2718,7 +2718,7 @@ export default function DashboardPage() {
                     value={orgSlug}
                     onChange={(e) => setOrgSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                     placeholder="maju-jaya"
-                    className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-r-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                    className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-r-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                   />
                 </div>
               </div>
@@ -2732,7 +2732,7 @@ export default function DashboardPage() {
                   value={billingEmail}
                   onChange={(e) => setBillingEmail(e.target.value)}
                   placeholder="finance@majujaya.com"
-                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
+                  className="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition"
                 />
               </div>
 
