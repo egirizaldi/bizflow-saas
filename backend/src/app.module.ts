@@ -8,6 +8,7 @@ import { TeamModule } from './team/team.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
 import { SubscriptionModule } from './subscription/subscription.module.js';
 import { BillingModule } from './billing/billing.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -25,6 +26,7 @@ import { AppService } from './app.service.js';
     AnalyticsModule,
     SubscriptionModule,
     BillingModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

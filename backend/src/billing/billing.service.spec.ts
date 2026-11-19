@@ -64,6 +64,13 @@ describe('BillingService (Midtrans Payment Gateway & Webhook)', () => {
       }),
     };
 
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      json: async () => ({
+        token: 'snap-token-midtrans-test',
+        redirect_url: 'https://app.sandbox.midtrans.com/snap/v2/vtweb/mock',
+      }),
+    } as any);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BillingService,

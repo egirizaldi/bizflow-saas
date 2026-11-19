@@ -25,6 +25,19 @@ export class ProjectService {
       },
     });
 
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId,
+          action: 'PROJECT_CREATED',
+          targetType: 'Project',
+          targetId: project.id,
+          changesPayload: { name: project.name, description: project.description },
+        },
+      });
+    } catch {}
+
     return {
       message: 'Project berhasil dibuat dalam workspace ini.',
       project,
@@ -94,6 +107,17 @@ export class ProjectService {
         id: projectId,
       },
     });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          action: 'PROJECT_DELETED',
+          targetType: 'Project',
+          targetId: projectId,
+        },
+      });
+    } catch {}
 
     return {
       message: 'Project berhasil dihapus dari workspace.',

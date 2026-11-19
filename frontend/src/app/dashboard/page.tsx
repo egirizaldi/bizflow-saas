@@ -48,6 +48,8 @@ import {
   ExternalLink,
   QrCode,
   Wallet,
+  Search,
+  Filter,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -76,7 +78,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [organizations, setOrganizations] = useState<AuthOrganization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'projects' | 'team' | 'analytics' | 'subscription'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'team' | 'analytics' | 'subscription' | 'audit'>('projects');
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
 
   // Projects State
@@ -128,6 +130,23 @@ export default function DashboardPage() {
   } | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+
+  // Audit Trail State
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditPagination, setAuditPagination] = useState<any>({
+    page: 1,
+    limit: 15,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+  });
+  const [auditActionFilter, setAuditActionFilter] = useState('ALL');
+  const [auditSearch, setAuditSearch] = useState('');
+  const [availableActions, setAvailableActions] = useState<string[]>([]);
+  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [auditError, setAuditError] = useState('');
+  const [selectedLogPayload, setSelectedLogPayload] = useState<any | null>(null);
 
   // Organization Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -434,6 +453,53 @@ export default function DashboardPage() {
       alert(err.message || 'Gagal memproses simulasi pembayaran.');
     } finally {
       setIsProcessingPayment(false);
+    }
+  };
+
+  const fetchAuditLogs = async (
+    orgId?: string,
+    page = 1,
+    action = auditActionFilter,
+    search = auditSearch,
+  ) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingAudit(true);
+      setAuditError('');
+
+      const queryParams = new URLSearchParams({
+        page: String(page),
+        limit: '15',
+      });
+      if (action && action !== 'ALL') queryParams.append('action', action);
+      if (search && search.trim()) queryParams.append('search', search.trim());
+
+      const [logsRes, actionsRes] = await Promise.all([
+        apiRequest(`/audit-logs?${queryParams.toString()}`, {
+          headers: { 'x-organization-id': targetOrg },
+        }),
+        apiRequest('/audit-logs/actions', {
+          headers: { 'x-organization-id': targetOrg },
+        }).catch(() => []),
+      ]);
+
+      if (logsRes?.logs) {
+        setAuditLogs(logsRes.logs);
+        setAuditPagination(logsRes.pagination);
+      }
+      if (Array.isArray(actionsRes)) {
+        setAvailableActions(actionsRes);
+      }
+    } catch (err: any) {
+      setAuditLogs([]);
+      setAuditError(
+        err.message ||
+          'Gagal memuat audit logs. Pastikan paket langganan Anda mendukung fitur ini.',
+      );
+    } finally {
+      setIsLoadingAudit(false);
     }
   };
 
@@ -758,6 +824,21 @@ export default function DashboardPage() {
           >
             <CreditCard className="w-4 h-4" />
             Langganan & Paket
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('audit');
+              fetchAuditLogs(activeOrgId);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === 'audit'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Audit Trail
           </button>
         </div>
 
@@ -1861,6 +1942,338 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* TAB 5: AUDIT LOGGING & ACTIVITY TRAIL */}
+        {activeTab === 'audit' && (
+          <div className="space-y-6">
+            {/* Gated Feature Check: If Plan does NOT support Audit Logs & User is not Super Admin */}
+            {!user?.isSuperAdmin &&
+            subscriptionData?.plan &&
+            !subscriptionData.plan.canViewAuditLogs ? (
+              <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm text-center max-w-3xl mx-auto my-8">
+                <div className="w-16 h-16 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <Lock className="w-8 h-8" />
+                </div>
+                <span className="text-[11px] font-black uppercase tracking-wider px-3 py-1 bg-amber-100 text-amber-900 rounded-full border border-amber-200 inline-block mb-3">
+                  Fitur Eksklusif Paket Business & Enterprise
+                </span>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                  Audit Activity Trail & Kepatuhan Keamanan
+                </h3>
+                <p className="text-xs text-slate-500 mt-2 max-w-xl mx-auto leading-relaxed">
+                  Workspace Anda saat ini berada pada paket{' '}
+                  <strong className="text-slate-800">
+                    {subscriptionData.plan.name}
+                  </strong>
+                  . Fitur jejak audit kepatuhan merekam seluruh mutasi data, mutasi role anggota tim, pembuatan project, serta transaksi pembayaran lengkap dengan alamat IP dan User-Agent.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left max-w-lg mx-auto my-6 text-xs text-slate-700">
+                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Pencatatan kronologis mutasi data</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Audit IP Address & Perangkat</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Payload riwayat perubahan data</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                    <span>Pencarian & filter aksi lanjutan</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleInitiateCheckout('BUSINESS')}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Upgrade ke Paket Business Sekarang (Rp 299.000 / bln)
+                </button>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                      Jejak Audit & Aktivitas Keamanan (Audit Trail)
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Pencatatan riwayat perubahan data dan aktivitas operasional di workspace {activeOrg?.name}.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      fetchAuditLogs(
+                        activeOrgId,
+                        auditPagination.page,
+                        auditActionFilter,
+                        auditSearch,
+                      )
+                    }
+                    disabled={isLoadingAudit}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition self-start sm:self-auto"
+                  >
+                    {isLoadingAudit ? 'Memperbarui...' : 'Segarkan Log'}
+                  </button>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                  <div className="relative w-full sm:w-64">
+                    <select
+                      value={auditActionFilter}
+                      onChange={(e) => {
+                        setAuditActionFilter(e.target.value);
+                        fetchAuditLogs(activeOrgId, 1, e.target.value, auditSearch);
+                      }}
+                      className="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="ALL">Semua Jenis Aksi</option>
+                      {availableActions.map((action) => (
+                        <option key={action} value={action}>
+                          {action}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      fetchAuditLogs(
+                        activeOrgId,
+                        1,
+                        auditActionFilter,
+                        auditSearch,
+                      );
+                    }}
+                    className="flex-1 flex items-center gap-2 w-full"
+                  >
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Search className="h-3.5 w-3.5" />
+                      </div>
+                      <input
+                        type="text"
+                        value={auditSearch}
+                        onChange={(e) => setAuditSearch(e.target.value)}
+                        placeholder="Cari aktor, aksi, atau target entitas..."
+                        className="w-full text-xs pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition"
+                    >
+                      Filter
+                    </button>
+                    {auditSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuditSearch('');
+                          fetchAuditLogs(
+                            activeOrgId,
+                            1,
+                            auditActionFilter,
+                            '',
+                          );
+                        }}
+                        className="px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </form>
+                </div>
+
+                {/* Audit Table */}
+                {isLoadingAudit ? (
+                  <div className="py-16 text-center text-slate-400 flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                    <span className="text-xs">Memuat jejak audit log...</span>
+                  </div>
+                ) : auditLogs.length > 0 ? (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                        <tr>
+                          <th className="p-3 font-semibold">Waktu Kejadian</th>
+                          <th className="p-3 font-semibold">Aktor / Pengguna</th>
+                          <th className="p-3 font-semibold">Aksi Audit</th>
+                          <th className="p-3 font-semibold">Target Entitas</th>
+                          <th className="p-3 font-semibold">IP & Perangkat</th>
+                          <th className="p-3 font-semibold text-right">Rincian</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-600">
+                        {auditLogs.map((log: any) => {
+                          const dateStr = new Date(
+                            log.createdAt,
+                          ).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                          });
+
+                          const isCreatedOrSuccess =
+                            log.action.includes('CREATED') ||
+                            log.action.includes('SUCCESS') ||
+                            log.action.includes('JOINED');
+                          const isDeleteOrRemove =
+                            log.action.includes('DELETED') ||
+                            log.action.includes('REMOVED') ||
+                            log.action.includes('FAILED');
+                          const isRoleOrPlan =
+                            log.action.includes('ROLE') ||
+                            log.action.includes('SWITCHED');
+
+                          return (
+                            <tr key={log.id} className="hover:bg-slate-50/50">
+                              <td className="p-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                                {dateStr}
+                              </td>
+                              <td className="p-3">
+                                {log.user ? (
+                                  <div>
+                                    <span className="font-bold text-slate-900 block">
+                                      {log.user.fullName}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">
+                                      {log.user.email}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 font-mono text-[11px]">
+                                    System / Anonymous
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 whitespace-nowrap">
+                                <span
+                                  className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isCreatedOrSuccess
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : isDeleteOrRemove
+                                      ? 'bg-red-50 text-red-700 border-red-200'
+                                      : isRoleOrPlan
+                                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                      : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  }`}
+                                >
+                                  {log.action}
+                                </span>
+                              </td>
+                              <td className="p-3 whitespace-nowrap">
+                                <span className="font-semibold text-slate-800">
+                                  {log.targetType || '—'}
+                                </span>
+                                {log.targetId && (
+                                  <span className="block font-mono text-[10px] text-slate-400 truncate max-w-[120px]">
+                                    {log.targetId}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-[11px] text-slate-500 font-mono">
+                                <div>{log.ipAddress || '127.0.0.1'}</div>
+                                <div className="text-[10px] text-slate-400 truncate max-w-[150px]">
+                                  {log.userAgent || 'Antigravity Agent'}
+                                </div>
+                              </td>
+                              <td className="p-3 text-right">
+                                {log.changesPayload &&
+                                Object.keys(log.changesPayload).length > 0 ? (
+                                  <button
+                                    onClick={() =>
+                                      setSelectedLogPayload({
+                                        action: log.action,
+                                        targetType: log.targetType,
+                                        dateStr,
+                                        user: log.user?.fullName,
+                                        payload: log.changesPayload,
+                                      })
+                                    }
+                                    className="font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg border border-indigo-200 text-[11px] transition"
+                                  >
+                                    Payload
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <ShieldCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-semibold text-slate-600">
+                      Tidak ada jejak audit log yang cocok dengan kriteria pencarian.
+                    </p>
+                  </div>
+                )}
+
+                {/* Pagination Controls */}
+                {auditPagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-600">
+                    <div>
+                      Menampilkan halaman{' '}
+                      <strong className="text-slate-900">
+                        {auditPagination.page}
+                      </strong>{' '}
+                      dari {auditPagination.totalPages} ({auditPagination.total}{' '}
+                      aktivitas tercatat)
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          fetchAuditLogs(
+                            activeOrgId,
+                            auditPagination.page - 1,
+                            auditActionFilter,
+                            auditSearch,
+                          )
+                        }
+                        disabled={!auditPagination.hasPrevPage || isLoadingAudit}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-semibold disabled:opacity-40 transition"
+                      >
+                        Sebelumnya
+                      </button>
+                      <button
+                        onClick={() =>
+                          fetchAuditLogs(
+                            activeOrgId,
+                            auditPagination.page + 1,
+                            auditActionFilter,
+                            auditSearch,
+                          )
+                        }
+                        disabled={!auditPagination.hasNextPage || isLoadingAudit}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-semibold disabled:opacity-40 transition"
+                      >
+                        Selanjutnya
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Modal Undang Anggota Baru */}
@@ -2505,6 +2918,48 @@ export default function DashboardPage() {
               >
                 <FileText className="w-3.5 h-3.5" />
                 Cetak / Simpan PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail Payload Perubahan Audit */}
+      {selectedLogPayload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 text-white p-6 relative">
+              <button
+                onClick={() => setSelectedLogPayload(null)}
+                className="absolute right-5 top-5 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider block mb-1">
+                Jejak Perubahan Data
+              </span>
+              <h3 className="text-lg font-black">{selectedLogPayload.action}</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Target: {selectedLogPayload.targetType || 'Entitas'} • Oleh:{' '}
+                {selectedLogPayload.user || 'Sistem'}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <span className="text-xs font-bold text-slate-700 block">
+                Payload JSON Perubahan:
+              </span>
+              <pre className="bg-slate-950 text-emerald-400 p-4 rounded-2xl text-[11px] font-mono overflow-x-auto max-h-60 border border-slate-800">
+                {JSON.stringify(selectedLogPayload.payload, null, 2)}
+              </pre>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+              <button
+                onClick={() => setSelectedLogPayload(null)}
+                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition"
+              >
+                Tutup
               </button>
             </div>
           </div>

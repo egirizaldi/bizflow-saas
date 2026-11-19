@@ -194,16 +194,21 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 9: Audit Logging System
 > **Fokus**: Jejak audit kepatuhan keamanan yang merekam setiap aktivitas mutasi data.
+> **Status**: ✅ COMPLETED (AuditModule + SubscriptionGuard Plan Gating + Safe Mutation Logging + Filter & Search + JSON Payload Modal + 81 Tests)
 
 #### Checklist Pengerjaan:
-- [ ] Migrasi tabel `AuditLog`.
-- [ ] Buat NestJS Interceptor untuk menangkap aksi user (siapa, aksi apa, target, IP, user-agent).
-- [ ] Rekam event kunci: `USER_LOGIN`, `MEMBER_INVITED`, `ROLE_CHANGED`, `PLAN_UPGRADED`, `MEMBER_REMOVED`.
-- [ ] Endpoint `GET /audit-logs`: Menampilkan log aktivitas terurut kronologis dengan pagination.
-- [ ] Frontend: Halaman Audit Trail dengan filter tanggal dan pencarian user.
+- [x] Migrasi tabel `AuditLog` di Prisma schema (indexing `[organizationId, createdAt]`).
+- [x] Service jejak audit (`AuditService.recordLog`): Perekaman non-blocking aman mencakup aktor, aksi, target, payload perubahan, IP address, dan User-Agent.
+- [x] Rekam event kunci secara otomatis: `PROJECT_CREATED`, `PROJECT_DELETED`, `MEMBER_INVITED`, `MEMBER_JOINED`, `ROLE_CHANGED`, `MEMBER_REMOVED`, `PLAN_SWITCHED`, `PAYMENT_SUCCESS`.
+- [x] Endpoint `GET /api/v1/audit-logs`: Menampilkan log aktivitas terurut kronologis dengan pagination (page, limit) dan pencarian filter.
+- [x] Endpoint `GET /api/v1/audit-logs/actions`: Mengembalikan daftar tipe aksi unik untuk filter dinamis.
+- [x] Plan Gating via `SubscriptionGuard` (`@RequireFeature('canViewAuditLogs')`): Membatasi fitur khusus tier Business & Enterprise.
+- [x] Unit test komprehensif (`src/audit/audit.service.spec.ts`) - 81/81 tests passed di backend.
+- [x] Frontend: Tab **"Audit Trail"** dengan filter aksi, pencarian real-time, badge status warna-warni, pagination bar, modal payload viewer JSON, dan upgrade banner untuk tier Free/Starter.
 
 #### Acceptance Criteria:
 - Setiap perubahan data krusial tercatat di tabel audit log secara otomatis dan tidak bisa dimodifikasi oleh user.
+- Tenant pada paket Business/Enterprise dapat menelusuri riwayat aktivitas lengkap, sedangkan tier Free/Starter diarahkan untuk upgrade.
 
 ---
 

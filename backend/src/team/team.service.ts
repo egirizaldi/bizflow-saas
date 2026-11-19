@@ -117,6 +117,19 @@ export class TeamService {
       },
     });
 
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: currentUserId,
+          action: 'MEMBER_INVITED',
+          targetType: 'Invitation',
+          targetId: invitation.id,
+          changesPayload: { email: invitation.email, role: invitation.role },
+        },
+      });
+    } catch {}
+
     return {
       message: 'Undangan anggota tim berhasil dibuat.',
       invitation: {
@@ -207,6 +220,19 @@ export class TeamService {
         where: { id: invitation.id },
         data: { status: 'ACCEPTED' },
       });
+
+      try {
+        await tx.auditLog.create({
+          data: {
+            organizationId: invitation.organizationId,
+            userId: currentUserId,
+            action: 'MEMBER_JOINED',
+            targetType: 'OrganizationMember',
+            targetId: currentUserId,
+            changesPayload: { email: userEmail, role: invitation.role },
+          },
+        });
+      } catch {}
     });
 
     return {
@@ -297,6 +323,22 @@ export class TeamService {
       data: { role: newRole },
     });
 
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: currentUserId,
+          action: 'ROLE_CHANGED',
+          targetType: 'OrganizationMember',
+          targetId: memberId,
+          changesPayload: {
+            previousRole: targetMember.role,
+            newRole,
+          },
+        },
+      });
+    } catch {}
+
     return {
       message: 'Peran anggota berhasil diperbarui.',
       member: updated,
@@ -332,6 +374,22 @@ export class TeamService {
     await this.prisma.organizationMember.delete({
       where: { id: memberId },
     });
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          organizationId,
+          userId: currentUserId,
+          action: 'MEMBER_REMOVED',
+          targetType: 'OrganizationMember',
+          targetId: memberId,
+          changesPayload: {
+            removedUserId: targetMember.userId,
+            role: targetMember.role,
+          },
+        },
+      });
+    } catch {}
 
     return {
       message: 'Anggota tim berhasil dikeluarkan dari workspace.',
