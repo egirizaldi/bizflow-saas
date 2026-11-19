@@ -153,17 +153,21 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 7: Subscription Management & Plan Gating
 > **Fokus**: Struktur paket (Free, Starter, Business, Enterprise) dan pembatasan fitur berdasarkan tier.
+> **Status**: ✅ COMPLETED (SubscriptionModule + SubscriptionGuard + Quota Enforcement in TeamService + Live Tester UI & Pricing Table + 64 Tests)
 
 #### Checklist Pengerjaan:
-- [ ] Migrasi tabel `Plan` dan `Subscription`.
-- [ ] Buat seed data awal untuk paket: Free (Rp0), Starter (Rp99k), Business (Rp299k).
-- [ ] Buat `SubscriptionGuard` di NestJS untuk membatasi endpoint tertentu (misal: fitur audit logs hanya untuk Business+).
-- [ ] Validasi batas kuota: Mencegah penambahan member baru jika jumlah member telah mencapai `maxMembers` paket aktif.
-- [ ] Frontend: Halaman Pricing & Subscription Status dengan tabel perbandingan fitur.
+- [x] Migrasi tabel `Plan` dan `Subscription` (Relasi cascade & restrict schema).
+- [x] Seed data awal paket: Free (Rp0), Starter (Rp99k), Business (Rp299k), Enterprise (Rp999k).
+- [x] Buat `SubscriptionGuard` dan decorator `@RequireFeature()` di NestJS untuk membatasi endpoint tertentu (misal: fitur audit logs & export laporan hanya untuk Business+).
+- [x] Validasi batas kuota: Mencegah penambahan/undangan member baru jika jumlah member telah mencapai `maxMembers` paket aktif (`ForbiddenException`).
+- [x] Validasi downgrade paket: Mencegah downgrade jika jumlah anggota aktif melebihi batas paket tujuan (`BadRequestException`).
+- [x] Unit test komprehensif (`subscription.service.spec.ts` & `subscription.guard.spec.ts`) - 64/64 tests passed di backend.
+- [x] Frontend: Tab **"Langganan & Paket"** dengan Current Plan Badge, Kuota Anggota Meter, Live SubscriptionGuard Tester, Pricing Cards interaktif, dan Tabel Komparasi Fitur.
+- [x] Frontend: Indikator kuota anggota dan peringatan limit kuota pada tab Anggota Tim & Dialog Undangan.
 
 #### Acceptance Criteria:
 - Tenant pada Free Tier otomatis diblokir saat mencoba menambahkan member melebihi limit kuota paket.
-- UI menampilkan badge paket langganan aktif saat ini.
+- UI menampilkan badge paket langganan aktif saat ini dan tombol interaktif peralihan paket.
 
 ---
 

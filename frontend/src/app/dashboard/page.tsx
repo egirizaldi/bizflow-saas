@@ -37,6 +37,12 @@ import {
   TrendingUp,
   PieChart as PieIcon,
   Check,
+  Sparkles,
+  Zap,
+  Crown,
+  ArrowRight,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -65,7 +71,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [organizations, setOrganizations] = useState<AuthOrganization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'projects' | 'team' | 'analytics'>('projects');
+  const [activeTab, setActiveTab] = useState<'projects' | 'team' | 'analytics' | 'subscription'>('projects');
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
 
   // Projects State
@@ -91,6 +97,18 @@ export default function DashboardPage() {
   // Analytics Metrics State
   const [metrics, setMetrics] = useState<any>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+
+  // Subscription State
+  const [plans, setPlans] = useState<any[]>([]);
+  const [subscriptionData, setSubscriptionData] = useState<any>(null);
+  const [isLoadingSubscription, setIsLoadingSubscription] = useState(false);
+  const [isSwitchingPlan, setIsSwitchingPlan] = useState<string | null>(null);
+  const [subscriptionMsg, setSubscriptionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [guardTestResult, setGuardTestResult] = useState<{
+    feature: string;
+    status: 'idle' | 'loading' | 'success' | 'forbidden';
+    message: string;
+  }>({ feature: '', status: 'idle', message: '' });
 
   // Organization Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -119,6 +137,7 @@ export default function DashboardPage() {
           fetchProjects(validOrg.id);
           fetchTeam(validOrg.id);
           fetchMetrics(validOrg.id);
+          fetchSubscription(validOrg.id);
         } else if (res.organizations.length > 0) {
           const firstOrgId = res.organizations[0].id;
           setActiveOrgId(firstOrgId);
@@ -126,6 +145,7 @@ export default function DashboardPage() {
           fetchProjects(firstOrgId);
           fetchTeam(firstOrgId);
           fetchMetrics(firstOrgId);
+          fetchSubscription(firstOrgId);
         }
       }
     } catch {
@@ -195,6 +215,89 @@ export default function DashboardPage() {
       setMetrics(null);
     } finally {
       setIsLoadingMetrics(false);
+    }
+  };
+
+  const fetchSubscription = async (orgId?: string) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingSubscription(true);
+      const [plansRes, currentRes] = await Promise.all([
+        apiRequest('/subscriptions/plans').catch(() => []),
+        apiRequest('/subscriptions/current', {
+          headers: { 'x-organization-id': targetOrg },
+        }).catch(() => null),
+      ]);
+
+      if (plansRes) setPlans(plansRes);
+      if (currentRes) setSubscriptionData(currentRes);
+    } catch {
+      setSubscriptionData(null);
+    } finally {
+      setIsLoadingSubscription(false);
+    }
+  };
+
+  const handleSwitchPlan = async (planName: string) => {
+    if (!activeOrgId) return;
+    setIsSwitchingPlan(planName);
+    setSubscriptionMsg(null);
+
+    try {
+      const res = await apiRequest('/subscriptions/switch', {
+        method: 'POST',
+        headers: { 'x-organization-id': activeOrgId },
+        body: JSON.stringify({ planName }),
+      });
+
+      setSubscriptionMsg({
+        type: 'success',
+        text: res?.message || `Paket langganan berhasil dialihkan ke ${planName}!`,
+      });
+      fetchSubscription(activeOrgId);
+      fetchMetrics(activeOrgId);
+      fetchOrganizations();
+    } catch (err: any) {
+      setSubscriptionMsg({
+        type: 'error',
+        text: err.message || 'Gagal mengubah paket.',
+      });
+    } finally {
+      setIsSwitchingPlan(null);
+    }
+  };
+
+  const handleTestFeatureAccess = async (
+    featureKey: 'audit-logs' | 'export-reports',
+    label: string,
+  ) => {
+    if (!activeOrgId) return;
+    setGuardTestResult({
+      feature: label,
+      status: 'loading',
+      message: 'Menghubungi SubscriptionGuard backend...',
+    });
+
+    try {
+      const res = await apiRequest(`/subscriptions/features/${featureKey}`, {
+        headers: { 'x-organization-id': activeOrgId },
+      });
+      setGuardTestResult({
+        feature: label,
+        status: 'success',
+        message:
+          res?.message || '200 OK: Akses diizinkan oleh SubscriptionGuard!',
+      });
+    } catch (err: any) {
+      setGuardTestResult({
+        feature: label,
+        status: 'forbidden',
+        message:
+          err.message ||
+          '403 Forbidden: Ditolak oleh SubscriptionGuard. Paket saat ini belum memenuhi kualifikasi fitur.',
+      });
     }
   };
 
@@ -505,6 +608,21 @@ export default function DashboardPage() {
             <BarChart3 className="w-4 h-4" />
             Analytics & Metrik
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('subscription');
+              fetchSubscription(activeOrgId);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === 'subscription'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Langganan & Paket
+          </button>
         </div>
 
         {/* TAB 1: PROJECTS */}
@@ -614,6 +732,43 @@ export default function DashboardPage() {
                   </button>
                 </Can>
               </div>
+
+              {/* Kuota Anggota Banner */}
+              {subscriptionData?.usage && (
+                <div className={`mb-5 p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                  subscriptionData.usage.isLimitReached
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-indigo-50/50 border-indigo-100 text-slate-700'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    <Users className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                    <div>
+                      <span className="font-semibold">
+                        Penggunaan Kuota Anggota: {subscriptionData.usage.totalUsedSlots} / {subscriptionData.usage.maxMembers}
+                      </span>
+                      <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full font-bold bg-white/80 border border-slate-200 text-slate-800">
+                        Paket {subscriptionData.plan.name}
+                      </span>
+                      {subscriptionData.usage.isLimitReached && (
+                        <span className="ml-2 text-[11px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700 border border-red-200">
+                          Kuota Penuh
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('subscription');
+                      fetchSubscription(activeOrgId);
+                    }}
+                    className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-700 transition self-start sm:self-auto"
+                  >
+                    Tingkatkan Kuota di Langganan
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {isLoadingTeam ? (
                 <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
@@ -936,6 +1091,507 @@ export default function DashboardPage() {
             ) : null}
           </div>
         )}
+
+        {/* TAB 4: SUBSCRIPTION & PLAN GATING */}
+        {activeTab === 'subscription' && (
+          <div className="space-y-8">
+            {/* Notification Alert for Switch/Upgrade */}
+            {subscriptionMsg && (
+              <div
+                className={`p-4 rounded-xl border flex items-center justify-between text-sm ${
+                  subscriptionMsg.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-red-50 border-red-200 text-red-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {subscriptionMsg.type === 'success' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  )}
+                  <span>{subscriptionMsg.text}</span>
+                </div>
+                <button
+                  onClick={() => setSubscriptionMsg(null)}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-semibold"
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+
+            {/* Current Active Plan Overview */}
+            {subscriptionData && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                      <CreditCard className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-slate-900">
+                          Paket {subscriptionData.plan.name}
+                        </h2>
+                        <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wide">
+                          {subscriptionData.subscription.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Aktif untuk workspace{' '}
+                        <strong className="text-slate-700">
+                          {subscriptionData.organization?.name}
+                        </strong>{' '}
+                        • Sisa masa aktif:{' '}
+                        <span className="font-semibold text-indigo-600">
+                          {subscriptionData.subscription.daysRemaining} Hari
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-black text-slate-900">
+                      Rp{' '}
+                      {new Intl.NumberFormat('id-ID').format(
+                        subscriptionData.plan.price,
+                      )}
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium">/ bulan</span>
+                  </div>
+                </div>
+
+                {/* Quota Meter */}
+                <div className="pt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-semibold mb-2">
+                      <span className="text-slate-600">Penggunaan Kuota Anggota</span>
+                      <span
+                        className={`${
+                          subscriptionData.usage.isLimitReached
+                            ? 'text-red-600'
+                            : 'text-indigo-600'
+                        }`}
+                      >
+                        {subscriptionData.usage.totalUsedSlots} /{' '}
+                        {subscriptionData.usage.maxMembers} Anggota (
+                        {subscriptionData.usage.quotaPercentage}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-500 ${
+                          subscriptionData.usage.quotaPercentage >= 100
+                            ? 'bg-red-500'
+                            : subscriptionData.usage.quotaPercentage >= 75
+                            ? 'bg-amber-500'
+                            : 'bg-indigo-600'
+                        }`}
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            subscriptionData.usage.quotaPercentage,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      {subscriptionData.usage.remainingSlots} slot tersisa untuk paket ini.
+                    </p>
+                  </div>
+
+                  <div className="border-l border-slate-100 pl-0 md:pl-6">
+                    <span className="text-xs font-semibold text-slate-500 block mb-2">
+                      Status Hak Akses Fitur
+                    </span>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Export PDF/Excel</span>
+                        <span
+                          className={`font-semibold ${
+                            subscriptionData.plan.canExportReports
+                              ? 'text-emerald-600'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {subscriptionData.plan.canExportReports
+                            ? '✅ Diizinkan'
+                            : '🔒 Terkunci'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600">Audit Activity Logs</span>
+                        <span
+                          className={`font-semibold ${
+                            subscriptionData.plan.canViewAuditLogs
+                              ? 'text-emerald-600'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {subscriptionData.plan.canViewAuditLogs
+                            ? '✅ Diizinkan'
+                            : '🔒 Terkunci'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-l border-slate-100 pl-0 md:pl-6 flex flex-col justify-between">
+                    <span className="text-xs font-semibold text-slate-500 block mb-1">
+                      Wewenang Billing
+                    </span>
+                    <p className="text-xs text-slate-600">
+                      Peran Anda di workspace ini:{' '}
+                      <span className="font-bold text-slate-900">{userRole}</span>
+                    </p>
+                    {userRole !== 'OWNER' && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-200 mt-2">
+                        Perubahan paket hanya dapat diproses oleh pemilik (OWNER).
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* LIVE TESTER: SubscriptionGuard Feature Access Verification */}
+            <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-md border border-slate-800">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-base font-bold flex items-center gap-2 text-indigo-300">
+                    <ShieldCheck className="w-5 h-5 text-indigo-400" />
+                    Live Tester: Proteksi Otorisasi SubscriptionGuard
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Uji langsung proteksi backend `SubscriptionGuard` di endpoint API berbasis tier aktif tenant.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() =>
+                      handleTestFeatureAccess(
+                        'export-reports',
+                        'Export Laporan (PDF/Excel)',
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2 rounded-xl border border-slate-700 transition"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    Uji Akses: Export Laporan
+                  </button>
+                  <button
+                    onClick={() =>
+                      handleTestFeatureAccess(
+                        'audit-logs',
+                        'Audit Trail & Keamanan',
+                      )
+                    }
+                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2 rounded-xl border border-slate-700 transition"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+                    Uji Akses: Audit Logs
+                  </button>
+                </div>
+              </div>
+
+              {/* Guard Result Box */}
+              {guardTestResult.status !== 'idle' && (
+                <div
+                  className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 transition ${
+                    guardTestResult.status === 'loading'
+                      ? 'bg-slate-800/80 border-slate-700 text-slate-300'
+                      : guardTestResult.status === 'success'
+                      ? 'bg-emerald-950/80 border-emerald-700 text-emerald-200'
+                      : 'bg-red-950/80 border-red-700 text-red-200'
+                  }`}
+                >
+                  {guardTestResult.status === 'loading' ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-400 mt-0.5" />
+                  ) : guardTestResult.status === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block">
+                      Hasil Pengujian Fitur [{guardTestResult.feature}]:
+                    </span>
+                    <span className="text-[11px] leading-relaxed">
+                      {guardTestResult.message}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Pricing Plans Grid */}
+            <div>
+              <div className="mb-6 text-center max-w-xl mx-auto">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                  Pilih Paket yang Sesuai untuk Skala Bisnis Anda
+                </h3>
+                <p className="text-sm text-slate-500 mt-2">
+                  Upgrade atau beralih paket kapan saja. Batas kuota dan fitur akan otomatis diperbarui secara instan.
+                </p>
+              </div>
+
+              {isLoadingSubscription ? (
+                <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                  <span className="text-sm">Memuat daftar paket langganan...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {plans.map((p: any) => {
+                    const isCurrent =
+                      subscriptionData?.plan?.name?.toUpperCase() ===
+                      p.name?.toUpperCase();
+                    const isPopular = p.name === 'BUSINESS';
+                    const priceNum = Number(p.price);
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`rounded-2xl border transition-all duration-300 flex flex-col justify-between p-6 bg-white relative ${
+                          isPopular
+                            ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-lg'
+                            : 'border-slate-200 shadow-sm hover:shadow-md'
+                        }`}
+                      >
+                        {isPopular && (
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> Paling Populer
+                          </div>
+                        )}
+
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-bold text-slate-900 text-lg">
+                              {p.name}
+                            </h4>
+                            {isCurrent && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                Aktif Saat Ini
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mb-4">
+                            <span className="text-3xl font-black text-slate-900">
+                              Rp {new Intl.NumberFormat('id-ID').format(priceNum)}
+                            </span>
+                            <span className="text-xs text-slate-400 font-medium">
+                              {' '}
+                              / bln
+                            </span>
+                          </div>
+
+                          <div className="p-3 bg-slate-50 rounded-xl mb-5 text-xs text-slate-700 border border-slate-100 flex items-center gap-2">
+                            <Users className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                            <span>
+                              Maksimal <strong>{p.maxMembers} Anggota Tim</strong>
+                            </span>
+                          </div>
+
+                          <ul className="space-y-2.5 text-xs text-slate-600 mb-6">
+                            <li className="flex items-center gap-2">
+                              <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                              <span>Multi-tenant Isolation</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                              <span>Role-Based Access Control</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              {p.canExportReports ? (
+                                <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                              ) : (
+                                <X className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                              )}
+                              <span
+                                className={
+                                  p.canExportReports
+                                    ? 'text-slate-800 font-medium'
+                                    : 'text-slate-400'
+                                }
+                              >
+                                Export Laporan PDF/Excel
+                              </span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                              {p.canViewAuditLogs ? (
+                                <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                              ) : (
+                                <X className="w-4 h-4 text-slate-300 flex-shrink-0" />
+                              )}
+                              <span
+                                className={
+                                  p.canViewAuditLogs
+                                    ? 'text-slate-800 font-medium'
+                                    : 'text-slate-400'
+                                }
+                              >
+                                Audit Activity Logs
+                              </span>
+                            </li>
+                            {p.name === 'BUSINESS' && (
+                              <li className="flex items-center gap-2 text-indigo-600 font-medium">
+                                <Sparkles className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                                <span>Support Prioritas 24/7</span>
+                              </li>
+                            )}
+                            {p.name === 'ENTERPRISE' && (
+                              <li className="flex items-center gap-2 text-purple-600 font-medium">
+                                <Crown className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                <span>Dedicated SLA & Custom Branding</span>
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+
+                        <div>
+                          {isCurrent ? (
+                            <button
+                              disabled
+                              className="w-full py-2.5 text-xs font-semibold rounded-xl bg-slate-100 text-slate-400 cursor-default flex items-center justify-center gap-1.5"
+                            >
+                              <Check className="w-4 h-4" /> Paket Aktif
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleSwitchPlan(p.name)}
+                              disabled={
+                                userRole !== 'OWNER' || isSwitchingPlan === p.name
+                              }
+                              className={`w-full py-2.5 text-xs font-semibold rounded-xl transition shadow-sm flex items-center justify-center gap-1.5 ${
+                                isPopular
+                                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+                              } disabled:opacity-50`}
+                            >
+                              {isSwitchingPlan === p.name ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  Memproses...
+                                </>
+                              ) : userRole === 'OWNER' ? (
+                                `Pilih Paket ${p.name}`
+                              ) : (
+                                'Khusus OWNER'
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Feature Comparison Matrix Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h4 className="text-base font-bold text-slate-900 mb-2">
+                Tabel Komparasi Fitur Lengkap
+              </h4>
+              <p className="text-xs text-slate-500 mb-6">
+                Rincian matriks fitur dan spesifikasi teknis berdasarkan paket langganan.
+              </p>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-700">
+                      <th className="p-3 font-semibold">Fitur & Kemampuan</th>
+                      <th className="p-3 font-semibold text-center">FREE</th>
+                      <th className="p-3 font-semibold text-center">STARTER</th>
+                      <th className="p-3 font-semibold text-center bg-indigo-50/50 text-indigo-700">
+                        BUSINESS
+                      </th>
+                      <th className="p-3 font-semibold text-center">ENTERPRISE</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-600">
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        Batas Maksimal Anggota Tim
+                      </td>
+                      <td className="p-3 text-center">2 Anggota</td>
+                      <td className="p-3 text-center">5 Anggota</td>
+                      <td className="p-3 text-center font-bold text-indigo-700 bg-indigo-50/30">
+                        20 Anggota
+                      </td>
+                      <td className="p-3 text-center font-bold">100 Anggota</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        Multi-Tenancy Workspace
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold bg-indigo-50/30">
+                        ✓
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        Role-Based Access Control (RBAC)
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold bg-indigo-50/30">
+                        ✓
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">✓</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        Export Laporan PDF & Excel
+                      </td>
+                      <td className="p-3 text-center text-slate-300 font-bold">—</td>
+                      <td className="p-3 text-center text-slate-300 font-bold">—</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold bg-indigo-50/30">
+                        ✓ (Aktif)
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">
+                        ✓ (Aktif)
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        Audit Logs & Activity Trail
+                      </td>
+                      <td className="p-3 text-center text-slate-300 font-bold">—</td>
+                      <td className="p-3 text-center text-slate-300 font-bold">—</td>
+                      <td className="p-3 text-center text-emerald-600 font-bold bg-indigo-50/30">
+                        ✓ (Aktif)
+                      </td>
+                      <td className="p-3 text-center text-emerald-600 font-bold">
+                        ✓ (Aktif)
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-medium text-slate-800">
+                        SLA Jaminan Uptime
+                      </td>
+                      <td className="p-3 text-center text-slate-400">Standar</td>
+                      <td className="p-3 text-center text-slate-400">99.0%</td>
+                      <td className="p-3 text-center text-indigo-700 font-semibold bg-indigo-50/30">
+                        99.5%
+                      </td>
+                      <td className="p-3 text-center text-purple-700 font-bold">
+                        99.9% Dedicated
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modal Undang Anggota Baru */}
@@ -958,6 +1614,22 @@ export default function DashboardPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {subscriptionData?.usage?.isLimitReached && (
+              <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">
+                    Peringatan Kuota Anggota ({subscriptionData.usage.totalUsedSlots} /{' '}
+                    {subscriptionData.usage.maxMembers})
+                  </span>
+                  <span>
+                    Paket {subscriptionData.plan.name} telah mencapai batas maksimum anggota.
+                    Silakan tingkatkan ke paket yang lebih tinggi di tab Langganan.
+                  </span>
+                </div>
+              </div>
+            )}
 
             {inviteError && (
               <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">

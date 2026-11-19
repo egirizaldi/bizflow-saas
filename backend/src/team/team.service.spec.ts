@@ -24,6 +24,7 @@ describe('TeamService (Team Management & Invitations)', () => {
         upsert: vi.fn(),
         update: vi.fn(),
         delete: vi.fn(),
+        count: vi.fn(),
       },
       invitation: {
         findFirst: vi.fn(),
@@ -31,6 +32,10 @@ describe('TeamService (Team Management & Invitations)', () => {
         create: vi.fn(),
         findMany: vi.fn(),
         update: vi.fn(),
+        count: vi.fn(),
+      },
+      subscription: {
+        findUnique: vi.fn(),
       },
       $transaction: vi.fn(async (cb) => cb(prisma)),
     };
@@ -81,9 +86,31 @@ describe('TeamService (Team Management & Invitations)', () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it('should throw ForbiddenException if member quota limit is reached for current plan', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.invitation.findFirst.mockResolvedValue(null);
+      prisma.subscription.findUnique.mockResolvedValue({
+        plan: { name: 'FREE', maxMembers: 2 },
+      });
+      prisma.organizationMember.count.mockResolvedValue(2);
+      prisma.invitation.count.mockResolvedValue(0);
+
+      await expect(
+        service.inviteMember('org-1', 'user-owner', 'OWNER', {
+          email: 'newbie@mail.com',
+          role: Role.STAFF,
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should create invitation with valid token and 48-hour expiration', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.invitation.findFirst.mockResolvedValue(null);
+      prisma.subscription.findUnique.mockResolvedValue({
+        plan: { name: 'FREE', maxMembers: 5 },
+      });
+      prisma.organizationMember.count.mockResolvedValue(1);
+      prisma.invitation.count.mockResolvedValue(0);
       prisma.invitation.create.mockResolvedValue({
         id: 'invite-1',
         email: 'andi@mail.com',

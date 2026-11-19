@@ -62,7 +62,36 @@ export class TeamService {
       throw new ConflictException('Undangan aktif untuk email ini sudah pernah dikirim.');
     }
 
-    // 3. Buat token undangan unik (kedaluwarsa 48 jam)
+    // 3. Cek batas kuota anggota berdasarkan paket langganan aktif
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { organizationId },
+      include: { plan: true },
+    });
+
+    if (subscription?.plan) {
+      const activeMembersCount = await this.prisma.organizationMember.count({
+        where: {
+          organizationId,
+          status: 'ACTIVE',
+        },
+      });
+
+      const pendingInvitesCount = await this.prisma.invitation.count({
+        where: {
+          organizationId,
+          status: 'PENDING',
+          expiresAt: { gt: new Date() },
+        },
+      });
+
+      if (activeMembersCount + pendingInvitesCount >= subscription.plan.maxMembers) {
+        throw new ForbiddenException(
+          `Batas kuota anggota untuk paket ${subscription.plan.name} (${subscription.plan.maxMembers} anggota) telah tercapai. Silakan upgrade paket langganan Anda untuk mengundang lebih banyak anggota.`,
+        );
+      }
+    }
+
+    // 4. Buat token undangan unik (kedaluwarsa 48 jam)
     const token = randomBytes(24).toString('hex');
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 48);
