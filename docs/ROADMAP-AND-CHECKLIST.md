@@ -173,19 +173,22 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 8: Payment Gateway Integration (Midtrans)
 > **Fokus**: Alur checkout berbayar, integrasi Midtrans Snap, dan webhook reconciliation.
+> **Status**: ✅ COMPLETED (BillingService + Midtrans Snap Checkout + SHA512 Webhook + Idempotent Invoicing + Interactive Sandbox Modal + 75 Tests)
 
 #### Checklist Pengerjaan:
-- [ ] Setup akun Midtrans Sandbox dan dapatkan `Server Key` & `Client Key`.
-- [ ] Endpoint `POST /billing/checkout`: Memanggil Midtrans Snap API dan menghasilkan `snap_token`.
-- [ ] Frontend: Memasang script Midtrans Snap JS dan memunculkan pop-up pembayaran saat checkout diklik.
-- [ ] Endpoint `POST /billing/webhook`: Handler notifikasi Midtrans.
-- [ ] Verifikasi signature hash SHA512 pada webhook payload.
-- [ ] Idempotency handling: Memastikan order yang sudah lunas tidak diproses ulang.
-- [ ] Update masa aktif subscription (`currentPeriodEnd = now + 30 days`) dan generate invoice otomatis.
+- [x] Konfigurasi kredensial Midtrans Sandbox (`MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_IS_PRODUCTION`).
+- [x] Endpoint `POST /api/v1/billing/checkout`: Memanggil Midtrans Snap API (atau Sandbox Fallback) menghasilkan `snapToken`, `orderId`, dan record transaksi `Payment` status `PENDING`.
+- [x] Frontend: Memasang script Midtrans Snap JS dan modal dialog interaktif pembayaran saat checkout diklik.
+- [x] Endpoint `POST /api/v1/billing/webhook`: Handler notifikasi Midtrans dengan parsing status `settlement`, `capture`, `deny`, `cancel`, `expire`.
+- [x] Verifikasi signature hash SHA512 pada webhook payload (`crypto.createHash('sha512')`).
+- [x] Idempotency handling: Memastikan order yang sudah lunas tidak diproses ulang (`PaymentStatus.SUCCESS` bypass).
+- [x] Update atomik: Update subscription (`planId`, `status: ACTIVE`, `currentPeriodEnd = now + 30 days`) dan generate invoice resmi otomatis (`Invoice` table).
+- [x] Unit test komprehensif (`src/billing/billing.service.spec.ts`) - 75/75 tests passed di backend.
+- [x] Frontend: Tabel Riwayat Transaksi & Tagihan (Invoices) dengan modal bukti invoice resmi digital.
 
 #### Acceptance Criteria:
-- Simulasi pembayaran via Midtrans Simulator (BCA Virtual Account / QRIS) berhasil.
-- Subscription tenant otomatis ter-upgrade ke status aktif segera setelah webhook diterima.
+- Simulasi pembayaran via Midtrans Snap (QRIS, VA, Kartu Kredit) berhasil.
+- Subscription tenant otomatis ter-upgrade ke status aktif segera setelah webhook diterima, dan invoice resmi terbuat.
 
 ---
 

@@ -43,6 +43,11 @@ import {
   ArrowRight,
   XCircle,
   AlertTriangle,
+  Receipt,
+  FileText,
+  ExternalLink,
+  QrCode,
+  Wallet,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -110,6 +115,20 @@ export default function DashboardPage() {
     message: string;
   }>({ feature: '', status: 'idle', message: '' });
 
+  // Billing & Midtrans State
+  const [billingHistory, setBillingHistory] = useState<any[]>([]);
+  const [isLoadingBilling, setIsLoadingBilling] = useState(false);
+  const [checkoutModalData, setCheckoutModalData] = useState<{
+    orderId: string;
+    snapToken: string;
+    amount: number;
+    planName: string;
+    isMock: boolean;
+    redirectUrl?: string;
+  } | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+
   // Organization Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [orgName, setOrgName] = useState('');
@@ -138,6 +157,7 @@ export default function DashboardPage() {
           fetchTeam(validOrg.id);
           fetchMetrics(validOrg.id);
           fetchSubscription(validOrg.id);
+          fetchBillingHistory(validOrg.id);
         } else if (res.organizations.length > 0) {
           const firstOrgId = res.organizations[0].id;
           setActiveOrgId(firstOrgId);
@@ -146,6 +166,7 @@ export default function DashboardPage() {
           fetchTeam(firstOrgId);
           fetchMetrics(firstOrgId);
           fetchSubscription(firstOrgId);
+          fetchBillingHistory(firstOrgId);
         }
       }
     } catch {
@@ -298,6 +319,121 @@ export default function DashboardPage() {
           err.message ||
           '403 Forbidden: Ditolak oleh SubscriptionGuard. Paket saat ini belum memenuhi kualifikasi fitur.',
       });
+    }
+  };
+
+  const fetchBillingHistory = async (orgId?: string) => {
+    const targetOrg = orgId || activeOrgId || Cookies.get('currentOrgId');
+    if (!targetOrg) return;
+
+    try {
+      setIsLoadingBilling(true);
+      const res = await apiRequest('/billing/history', {
+        headers: { 'x-organization-id': targetOrg },
+      });
+      if (Array.isArray(res)) {
+        setBillingHistory(res);
+      }
+    } catch {
+      setBillingHistory([]);
+    } finally {
+      setIsLoadingBilling(false);
+    }
+  };
+
+  const handleInitiateCheckout = async (planName: string) => {
+    if (!activeOrgId) return;
+
+    if (planName === 'FREE') {
+      return handleSwitchPlan('FREE');
+    }
+
+    setIsSwitchingPlan(planName);
+    setSubscriptionMsg(null);
+
+    try {
+      const res = await apiRequest('/billing/checkout', {
+        method: 'POST',
+        headers: { 'x-organization-id': activeOrgId },
+        body: JSON.stringify({ planName }),
+      });
+
+      if (res?.snapToken) {
+        setCheckoutModalData({
+          orderId: res.orderId,
+          snapToken: res.snapToken,
+          amount: res.amount,
+          planName: res.plan?.name || planName,
+          isMock: res.isMock,
+          redirectUrl: res.redirectUrl,
+        });
+
+        // Cek jika Snap JS aktif di browser (apabila menggunakan kredensial asli)
+        if ((window as any).snap && !res.isMock) {
+          (window as any).snap.pay(res.snapToken, {
+            onSuccess: () => {
+              fetchSubscription(activeOrgId);
+              fetchBillingHistory(activeOrgId);
+              fetchMetrics(activeOrgId);
+              setCheckoutModalData(null);
+              setSubscriptionMsg({
+                type: 'success',
+                text: `Pembayaran sukses via Midtrans! Paket ${planName} telah aktif.`,
+              });
+            },
+            onPending: () => {
+              fetchBillingHistory(activeOrgId);
+              setSubscriptionMsg({
+                type: 'success',
+                text: `Transaksi pending. Menunggu pembayaran via Midtrans.`,
+              });
+            },
+            onError: () => {
+              setSubscriptionMsg({
+                type: 'error',
+                text: `Pembayaran gagal atau dibatalkan.`,
+              });
+            },
+            onClose: () => {
+              fetchBillingHistory(activeOrgId);
+            },
+          });
+        }
+      }
+    } catch (err: any) {
+      setSubscriptionMsg({
+        type: 'error',
+        text: err.message || 'Gagal memulai sesi checkout Midtrans.',
+      });
+    } finally {
+      setIsSwitchingPlan(null);
+    }
+  };
+
+  const handleSimulatePayment = async (orderId: string) => {
+    if (!activeOrgId) return;
+    setIsProcessingPayment(true);
+
+    try {
+      const res = await apiRequest(`/billing/simulate-pay/${orderId}`, {
+        method: 'POST',
+        headers: { 'x-organization-id': activeOrgId },
+      });
+
+      setSubscriptionMsg({
+        type: 'success',
+        text: res?.message || 'Pembayaran berhasil dikonfirmasi dan paket telah aktif!',
+      });
+
+      setCheckoutModalData(null);
+      fetchSubscription(activeOrgId);
+      fetchBillingHistory(activeOrgId);
+      fetchMetrics(activeOrgId);
+      fetchOrganizations();
+    } catch (err: any) {
+      alert(err.message || 'Gagal memproses simulasi pembayaran.');
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -1461,7 +1597,7 @@ export default function DashboardPage() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => handleSwitchPlan(p.name)}
+                              onClick={() => handleInitiateCheckout(p.name)}
                               disabled={
                                 userRole !== 'OWNER' || isSwitchingPlan === p.name
                               }
@@ -1474,10 +1610,17 @@ export default function DashboardPage() {
                               {isSwitchingPlan === p.name ? (
                                 <>
                                   <Loader2 className="w-4 h-4 animate-spin" />
-                                  Memproses...
+                                  Menyiapkan...
                                 </>
                               ) : userRole === 'OWNER' ? (
-                                `Pilih Paket ${p.name}`
+                                p.name === 'FREE' ? (
+                                  'Pilih Paket FREE'
+                                ) : (
+                                  <>
+                                    <CreditCard className="w-3.5 h-3.5" />
+                                    Bayar & Upgrade ({p.name})
+                                  </>
+                                )
                               ) : (
                                 'Khusus OWNER'
                               )}
@@ -1589,6 +1732,132 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Billing History & Invoices Table */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-indigo-600" />
+                    Riwayat Transaksi & Tagihan (Invoices)
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Histori pembayaran Midtrans gateway dan bukti invoice resmi organisasi.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => fetchBillingHistory(activeOrgId)}
+                  disabled={isLoadingBilling}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition"
+                >
+                  {isLoadingBilling ? 'Memperbarui...' : 'Segarkan Data'}
+                </button>
+              </div>
+
+              {isLoadingBilling ? (
+                <div className="py-12 text-center text-slate-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                  <span className="text-xs">Memuat histori pembayaran...</span>
+                </div>
+              ) : billingHistory.length > 0 ? (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                      <tr>
+                        <th className="p-3 font-semibold">Tanggal</th>
+                        <th className="p-3 font-semibold">Order ID</th>
+                        <th className="p-3 font-semibold">No. Invoice</th>
+                        <th className="p-3 font-semibold">Metode</th>
+                        <th className="p-3 font-semibold">Nominal</th>
+                        <th className="p-3 font-semibold">Status</th>
+                        <th className="p-3 font-semibold text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-600">
+                      {billingHistory.map((b: any) => {
+                        const dateStr = new Date(b.createdAt).toLocaleDateString(
+                          'id-ID',
+                          {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          },
+                        );
+
+                        return (
+                          <tr key={b.id} className="hover:bg-slate-50/50">
+                            <td className="p-3 text-slate-500">{dateStr}</td>
+                            <td className="p-3 font-mono font-semibold text-slate-900">
+                              {b.orderId}
+                            </td>
+                            <td className="p-3 font-mono text-indigo-600">
+                              {b.invoice?.invoiceNumber || '—'}
+                            </td>
+                            <td className="p-3 uppercase text-[11px] font-semibold text-slate-700">
+                              {b.paymentType || 'Midtrans'}
+                            </td>
+                            <td className="p-3 font-bold text-slate-900">
+                              Rp{' '}
+                              {new Intl.NumberFormat('id-ID').format(
+                                Number(b.amount),
+                              )}
+                            </td>
+                            <td className="p-3">
+                              {b.status === 'SUCCESS' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3" /> LUNAS
+                                </span>
+                              ) : b.status === 'PENDING' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  <Clock className="w-3 h-3" /> MENUNGGU
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-red-100 text-red-800 border border-red-200">
+                                  <XCircle className="w-3 h-3" /> GAGAL
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              {b.invoice ? (
+                                <button
+                                  onClick={() =>
+                                    setSelectedInvoice({
+                                      ...b.invoice,
+                                      orderId: b.orderId,
+                                      paymentType: b.paymentType,
+                                      orgName: activeOrg?.name,
+                                    })
+                                  }
+                                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-800 text-xs bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 transition"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  Lihat Invoice
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-xs">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-slate-600">
+                    Belum ada riwayat transaksi pembayaran.
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Pilih paket berbayar di atas untuk memulai transaksi via Midtrans Snap.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1996,6 +2265,248 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Checkout Midtrans Snap & Simulator Sandbox */}
+      {checkoutModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header Midtrans Branding */}
+            <div className="bg-slate-900 text-white p-6 relative">
+              <button
+                onClick={() => setCheckoutModalData(null)}
+                className="absolute right-5 top-5 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs uppercase tracking-wider font-extrabold text-indigo-400">
+                  Payment Gateway
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-400 text-slate-950">
+                  SANDBOX
+                </span>
+              </div>
+              <h3 className="text-xl font-black">Midtrans Snap Checkout</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Selesaikan pembayaran untuk mengaktifkan paket{' '}
+                <strong className="text-white">
+                  {checkoutModalData.planName}
+                </strong>
+                .
+              </p>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 space-y-6">
+              {/* Order Summary Box */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Order ID:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {checkoutModalData.orderId}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Paket Langganan:</span>
+                  <span className="font-bold text-slate-900">
+                    Paket {checkoutModalData.planName} (1 Bulan)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-500">
+                  <span>Workspace Tenant:</span>
+                  <span className="font-bold text-slate-900">
+                    {activeOrg?.name}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-sm">
+                  <span className="font-bold text-slate-900">Total Tagihan:</span>
+                  <span className="text-base font-black text-indigo-600">
+                    Rp{' '}
+                    {new Intl.NumberFormat('id-ID').format(
+                      checkoutModalData.amount,
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Supported Payment Channels */}
+              <div>
+                <span className="text-xs font-bold text-slate-700 block mb-3">
+                  Metode Pembayaran yang Didukung (Midtrans Snap):
+                </span>
+                <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition cursor-default">
+                    <QrCode className="w-5 h-5 text-indigo-600 mx-auto mb-1" />
+                    <span className="font-semibold block text-[11px] text-slate-800">
+                      QRIS / GoPay
+                    </span>
+                    <span className="text-[10px] text-slate-400">Instan</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition cursor-default">
+                    <Building2 className="w-5 h-5 text-indigo-600 mx-auto mb-1" />
+                    <span className="font-semibold block text-[11px] text-slate-800">
+                      Virtual Account
+                    </span>
+                    <span className="text-[10px] text-slate-400">BCA/Mandiri</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-400 transition cursor-default">
+                    <CreditCard className="w-5 h-5 text-indigo-600 mx-auto mb-1" />
+                    <span className="font-semibold block text-[11px] text-slate-800">
+                      Kartu Kredit
+                    </span>
+                    <span className="text-[10px] text-slate-400">Visa/Master</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sandbox Action */}
+              <div className="p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl">
+                <span className="text-xs font-bold text-indigo-950 block mb-1">
+                  🧪 Sandbox Testing Mode
+                </span>
+                <p className="text-[11px] text-indigo-800 mb-3 leading-relaxed">
+                  Gunakan tombol di bawah ini untuk mensimulasikan notifikasi sukses pembayaran webhook Midtrans secara instan tanpa perlu memotong saldo rekening nyata.
+                </p>
+
+                <button
+                  onClick={() =>
+                    handleSimulatePayment(checkoutModalData.orderId)
+                  }
+                  disabled={isProcessingPayment}
+                  className="w-full py-3 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Memverifikasi Webhook Midtrans...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Simulasikan Pembayaran Sukses (Webhook)
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setCheckoutModalData(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail Invoice Resmi */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-slate-900 text-white p-6 relative">
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="absolute right-5 top-5 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1 bg-indigo-600 text-white rounded">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <span className="text-xs uppercase font-bold tracking-wider text-indigo-300">
+                  BizFlow SaaS
+                </span>
+              </div>
+              <h3 className="text-xl font-black">Bukti Tagihan Resmi</h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Nomor: <span className="text-white font-mono">{selectedInvoice.invoiceNumber}</span>
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6 text-xs text-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-slate-400 block text-[11px]">Diterbitkan Untuk:</span>
+                  <span className="font-bold text-slate-900 text-sm">
+                    {selectedInvoice.orgName}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[11px]">Status Tagihan:</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="w-3 h-3" /> LUNAS (PAID)
+                  </span>
+                </div>
+              </div>
+
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700">
+                    <tr>
+                      <th className="p-3 font-semibold">Deskripsi Layanan</th>
+                      <th className="p-3 font-semibold text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    <tr>
+                      <td className="p-3">
+                        <span className="font-semibold block text-slate-900">
+                          Langganan Platform BizFlow SaaS (1 Bulan)
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Order ID: {selectedInvoice.orderId} • Metode:{' '}
+                          {selectedInvoice.paymentType || 'Midtrans'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-right font-bold text-slate-900">
+                        Rp{' '}
+                        {new Intl.NumberFormat('id-ID').format(
+                          Number(selectedInvoice.amount),
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t border-slate-200">
+                    <tr>
+                      <td className="p-3 font-bold text-slate-900">Total Pembayaran:</td>
+                      <td className="p-3 text-right font-black text-indigo-600 text-sm">
+                        Rp{' '}
+                        {new Intl.NumberFormat('id-ID').format(
+                          Number(selectedInvoice.amount),
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+                Bukti pembayaran ini sah dan diterbitkan secara digital oleh sistem multi-tenant BizFlow SaaS melalui payment gateway Midtrans.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
+              >
+                Tutup
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition inline-flex items-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Cetak / Simpan PDF
+              </button>
+            </div>
           </div>
         </div>
       )}
