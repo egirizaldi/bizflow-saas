@@ -10,6 +10,7 @@ import { SubscriptionModule } from './subscription/subscription.module.js';
 import { BillingModule } from './billing/billing.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { ReportModule } from './report/report.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -29,6 +30,7 @@ import { AppService } from './app.service.js';
     SubscriptionModule,
     BillingModule,
     AuditModule,
+    ReportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

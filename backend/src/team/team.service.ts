@@ -252,7 +252,7 @@ export class TeamService {
             action: 'MEMBER_JOINED',
             targetType: 'OrganizationMember',
             targetId: currentUserId,
-            changesPayload: { email: userEmail, role: invitation.role },
+            changesPayload: { email: currentUserEmail, role: invitation.role },
           },
         });
       } catch {}

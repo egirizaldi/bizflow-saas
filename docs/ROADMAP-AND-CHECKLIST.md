@@ -232,14 +232,24 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 11: Export Laporan (PDF & Excel)
 > **Fokus**: Fasilitas download dokumen resmi dan rekap data spreadsheet.
+> **Status**: ✅ COMPLETED (ReportModule + ExcelJS + PDFKit + Subscription Plan Gating + Frontend Downloaders + 90 Tests)
 
 #### Checklist Pengerjaan:
-- [ ] Export Excel (`exceljs`): Endpoint download daftar anggota tim dan rekapitulasi audit log dalam format `.xlsx`.
-- [ ] Export PDF (`pdfkit` / `@react-pdf/renderer`): Endpoint cetak faktur invoice resmi per transaksi pembayaran.
-- [ ] Feature Guard: Batasi fitur download ini khusus untuk paket yang memiliki izin (`canExportReports: true`).
+- [x] Export Excel (`exceljs`):
+  * `GET /api/v1/reports/projects/excel`: Rekap proyek terstruktur (.xlsx) dengan header bergaya indigo, info tenant, kolom lengkap, dan auto-styling.
+  * `GET /api/v1/reports/audit-logs/excel`: Rekap jejak audit keamanan operasional (.xlsx) hingga 500 riwayat transaksi terkini.
+- [x] Export PDF (`pdfkit`):
+  * `GET /api/v1/reports/invoices/:id/pdf`: Faktur kuitansi resmi berstandar korporat berformat A4 dengan badge hijau LUNAS/PAID, identitas tenant, rincian langganan, Order ID, dan digital stamp BizFlow.
+- [x] Feature Plan Gating via `SubscriptionGuard` (`@RequireFeature('canExportReports')`): Membatasi fitur ekspor dokumen resmi khusus untuk tier Starter, Business, dan Enterprise.
+- [x] Frontend:
+  * Tombol **"Export Excel"** di tab Projects.
+  * Tombol **"Export Excel"** di tab Audit Trail.
+  * Tombol **"Unduh PDF Resmi"** di modal detail Invoice tagihan.
+  * Notifikasi peringatan upgrade otomatis bila pengguna berada di paket Free.
+- [x] Unit test komprehensif (`report.service.spec.ts`) - 90/90 total tests passed di seluruh test suites backend.
 
 #### Acceptance Criteria:
-- File Excel dan PDF berhasil diunduh dengan layout yang rapi dan data yang valid sesuai tenant aktif.
+- File Excel dan PDF berhasil diunduh secara langsung dengan layout profesional, data valid terisolasi tenant, dan pembatasan fitur berdasarkan paket langganan aktif.
 
 ---
 

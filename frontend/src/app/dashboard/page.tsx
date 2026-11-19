@@ -50,6 +50,7 @@ import {
   Wallet,
   Search,
   Filter,
+  Download,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -147,6 +148,59 @@ export default function DashboardPage() {
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
   const [auditError, setAuditError] = useState('');
   const [selectedLogPayload, setSelectedLogPayload] = useState<any | null>(null);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+
+  const handleDownloadReport = async (
+    endpoint: string,
+    defaultFilename: string,
+  ) => {
+    if (!activeOrgId) return;
+    try {
+      setIsExporting(endpoint);
+      const token = Cookies.get('accessToken');
+      const backendUrl =
+        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
+      const res = await fetch(`${backendUrl}${endpoint}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-organization-id': activeOrgId,
+        },
+      });
+
+      if (res.status === 403) {
+        alert(
+          'Akses Dibatasi: Fitur ekspor laporan Excel & faktur PDF memerlukan paket STARTER, BUSINESS, atau ENTERPRISE. Silakan upgrade paket workspace Anda pada tab Subscription.',
+        );
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error('Gagal mengunduh dokumen laporan.');
+      }
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition');
+      let filename = defaultFilename;
+      if (disposition && disposition.includes('filename=')) {
+        const matches = disposition.match(/filename="?([^"]+)"?/);
+        if (matches && matches[1]) filename = matches[1];
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || 'Terjadi kesalahan saat mengunduh laporan.');
+    } finally {
+      setIsExporting(null);
+    }
+  };
 
   // Organization Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -853,16 +907,30 @@ export default function DashboardPage() {
                 </p>
               </div>
 
-              <Can currentRole={userRole} roles={['OWNER', 'ADMIN', 'MANAGER']}>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsProjectModalOpen(true)}
-                  disabled={!activeOrgId}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+                  onClick={() =>
+                    handleDownloadReport('/reports/projects/excel', 'projects.xlsx')
+                  }
+                  disabled={!activeOrgId || isExporting === '/reports/projects/excel'}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 px-3.5 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+                  title="Unduh rekap proyek (.xlsx) — Memerlukan Starter+"
                 >
-                  <PlusCircle className="w-4 h-4" />
-                  Project Baru
+                  <Download className="w-4 h-4 text-emerald-600" />
+                  {isExporting === '/reports/projects/excel' ? 'Mengunduh...' : 'Export Excel'}
                 </button>
-              </Can>
+
+                <Can currentRole={userRole} roles={['OWNER', 'ADMIN', 'MANAGER']}>
+                  <button
+                    onClick={() => setIsProjectModalOpen(true)}
+                    disabled={!activeOrgId}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm transition disabled:opacity-50"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    Project Baru
+                  </button>
+                </Can>
+              </div>
             </div>
 
             {isLoadingProjects ? (
@@ -2008,20 +2076,34 @@ export default function DashboardPage() {
                     </p>
                   </div>
 
-                  <button
-                    onClick={() =>
-                      fetchAuditLogs(
-                        activeOrgId,
-                        auditPagination.page,
-                        auditActionFilter,
-                        auditSearch,
-                      )
-                    }
-                    disabled={isLoadingAudit}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition self-start sm:self-auto"
-                  >
-                    {isLoadingAudit ? 'Memperbarui...' : 'Segarkan Log'}
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <button
+                      onClick={() =>
+                        handleDownloadReport('/reports/audit-logs/excel', 'audit-trail.xlsx')
+                      }
+                      disabled={isLoadingAudit || isExporting === '/reports/audit-logs/excel'}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 px-3 py-1.5 rounded-lg shadow-sm transition disabled:opacity-50"
+                      title="Unduh seluruh rekap aktivitas audit (.xlsx)"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-600" />
+                      {isExporting === '/reports/audit-logs/excel' ? 'Mengunduh...' : 'Export Excel'}
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        fetchAuditLogs(
+                          activeOrgId,
+                          auditPagination.page,
+                          auditActionFilter,
+                          auditSearch,
+                        )
+                      }
+                      disabled={isLoadingAudit}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 transition"
+                    >
+                      {isLoadingAudit ? 'Memperbarui...' : 'Segarkan Log'}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Filter and Search Bar */}
@@ -2905,7 +2987,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
               <button
                 onClick={() => setSelectedInvoice(null)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition"
@@ -2913,11 +2995,20 @@ export default function DashboardPage() {
                 Tutup
               </button>
               <button
-                onClick={() => window.print()}
+                onClick={() =>
+                  handleDownloadReport(
+                    `/reports/invoices/${selectedInvoice.id}/pdf`,
+                    `Invoice-${selectedInvoice.invoiceNumber.replace(/\//g, '-')}.pdf`,
+                  )
+                }
+                disabled={isExporting === `/reports/invoices/${selectedInvoice.id}/pdf`}
                 className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition inline-flex items-center gap-1.5"
+                title="Unduh faktur resmi format PDF"
               >
-                <FileText className="w-3.5 h-3.5" />
-                Cetak / Simpan PDF
+                <Download className="w-3.5 h-3.5" />
+                {isExporting === `/reports/invoices/${selectedInvoice.id}/pdf`
+                  ? 'Membuat PDF...'
+                  : 'Unduh PDF Resmi'}
               </button>
             </div>
           </div>
