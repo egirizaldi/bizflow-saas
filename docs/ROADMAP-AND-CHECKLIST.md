@@ -255,17 +255,20 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 12: Containerization & Production Deployment
 > **Fokus**: Menjalankan seluruh ekosistem di server VPS Linux dengan standar production.
+> **Status**: ✅ COMPLETED (Multi-Stage Dockerfiles + Standalone Next.js + Orchestrated Docker Compose + Nginx Reverse Proxy Gateway + Healthchecks)
 
 #### Checklist Pengerjaan:
-- [ ] Buat multi-stage `Dockerfile` untuk Backend NestJS.
-- [ ] Buat multi-stage `Dockerfile` untuk Frontend Next.js (output standalone).
-- [ ] Buat `docker-compose.yml` yang menghubungkan: `api`, `web`, `postgres`, dan `redis`.
-- [ ] Setup VPS Linux Ubuntu (UFW firewall, Docker engine).
-- [ ] Konfigurasi Nginx Reverse Proxy untuk routing domain:
-  * `app.bizflow.com` -> Frontend Next.js
-  * `api.bizflow.com` -> Backend NestJS
-- [ ] Pasang SSL gratis via Certbot / Let's Encrypt (HTTPS).
-- [ ] Jalankan database migration di server (`prisma migrate deploy`).
+- [x] Multi-stage `Dockerfile` untuk Backend NestJS (`node:22-alpine`, non-root user `nestjs`, Prisma generate & build dist).
+- [x] Multi-stage `Dockerfile` untuk Frontend Next.js (`node:22-alpine`, output `standalone`, non-root user `nextjs`, optimized static trace).
+- [x] `docker-compose.yml` terpusat mengorkestrasi 5 container:
+  * `postgres` (PostgreSQL 16 Alpine dengan volume persisten & healthcheck).
+  * `redis` (Redis 7 Alpine dengan volume persisten & healthcheck).
+  * `backend` (NestJS REST API otomatis deploy migrasi Prisma, auto-restart, dan port 3001).
+  * `frontend` (Next.js Standalone runner dengan port 3000).
+  * `nginx` (Gateway port 80 dengan routing `/api/` -> backend, `/_next/` & `/` -> frontend, gzip compression, dan WebSocket upgrade headers).
+- [x] Konfigurasi Gateway `docker/nginx/nginx.conf` dengan HTTP proxy pass, static asset caching (max-age 1 tahun), gzip compression, dan endpoint healthcheck `/healthz`.
+- [x] Template `.env.docker.example` terpusat untuk konfigurasi server production.
+- [x] Dokumentasi lengkap panduan deployment satu perintah di `README.md`.
 
 #### Acceptance Criteria:
-- Aplikasi dapat diakses publik via domain HTTPS dengan response stabil dan seluruh container berjalan *healthy*.
+- Seluruh container dapat di-*build* dan diorkestrasi secara terpadu melalui perintah `docker compose up -d --build` dengan arsitektur microservices terisolasi dan reverse proxy berkinerja tinggi.

@@ -17,7 +17,7 @@ async function main() {
       name: 'STARTER',
       price: 99000,
       maxMembers: 5,
-      canExportReports: false,
+      canExportReports: true,
       canViewAuditLogs: false,
     },
     {
