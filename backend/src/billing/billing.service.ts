@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { MailService } from '../mail/mail.service.js';
 import { Role, PaymentStatus, InvoiceStatus, SubscriptionStatus } from '@prisma/client';
 import { randomBytes, createHash } from 'crypto';
 import { MidtransWebhookDto } from './dto/midtrans-webhook.dto.js';
@@ -19,6 +20,7 @@ export class BillingService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private mailService: MailService,
   ) {}
 
   async createCheckout(
@@ -297,6 +299,36 @@ export class BillingService {
 
         return { updatedPayment, updatedSubscription, invoice };
       });
+
+      // E. Kirim email bukti pembayaran resmi (non-blocking)
+      try {
+        const ownerUser = await this.prisma.user.findFirst({
+          where: {
+            memberships: {
+              some: {
+                organizationId: payment.organizationId,
+                role: Role.OWNER,
+              },
+            },
+          },
+          select: { email: true },
+        });
+
+        const recipientEmail = payment.organization.billingEmail || ownerUser?.email;
+
+        if (recipientEmail) {
+          this.mailService
+            .sendPaymentReceiptEmail(
+              recipientEmail,
+              payment.organization.name,
+              result.updatedSubscription.plan.name,
+              Number(payment.amount),
+              result.invoice.invoiceNumber,
+              payment.orderId,
+            )
+            .catch(() => {});
+        }
+      } catch {}
 
       return {
         success: true,

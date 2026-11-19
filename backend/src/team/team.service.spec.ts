@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TeamService } from './team.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { MailService } from '../mail/mail.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -12,8 +13,15 @@ import { Role } from '@prisma/client';
 describe('TeamService (Team Management & Invitations)', () => {
   let service: TeamService;
   let prisma: any;
+  let mailService: any;
 
   beforeEach(async () => {
+    mailService = {
+      sendInvitationEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+      sendPaymentReceiptEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+      sendQuotaWarningEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+    };
+
     prisma = {
       user: {
         findUnique: vi.fn(),
@@ -37,6 +45,9 @@ describe('TeamService (Team Management & Invitations)', () => {
       subscription: {
         findUnique: vi.fn(),
       },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
       $transaction: vi.fn(async (cb) => cb(prisma)),
     };
 
@@ -44,6 +55,7 @@ describe('TeamService (Team Management & Invitations)', () => {
       providers: [
         TeamService,
         { provide: PrismaService, useValue: prisma },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 

@@ -9,6 +9,7 @@ import { AnalyticsModule } from './analytics/analytics.module.js';
 import { SubscriptionModule } from './subscription/subscription.module.js';
 import { BillingModule } from './billing/billing.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { MailModule } from './mail/mail.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -19,6 +20,7 @@ import { AppService } from './app.service.js';
       envFilePath: ['.env', '../.env'],
     }),
     PrismaModule,
+    MailModule,
     AuthModule,
     OrganizationModule,
     ProjectModule,

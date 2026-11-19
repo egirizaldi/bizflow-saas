@@ -6,13 +6,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { MailService } from '../mail/mail.service.js';
 import { InviteMemberDto } from './dto/invite-member.dto.js';
 import { Role } from '@prisma/client';
 import { randomBytes } from 'crypto';
 
 @Injectable()
 export class TeamService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mailService: MailService,
+  ) {}
 
   async inviteMember(
     organizationId: string,
@@ -128,6 +132,25 @@ export class TeamService {
           changesPayload: { email: invitation.email, role: invitation.role },
         },
       });
+    } catch {}
+
+    // Kirim email notifikasi undangan (non-blocking)
+    try {
+      const inviter = await this.prisma.user.findUnique({
+        where: { id: currentUserId },
+        select: { fullName: true, email: true },
+      });
+      const inviterName = inviter?.fullName || inviter?.email || 'Admin Organisasi';
+
+      this.mailService
+        .sendInvitationEmail(
+          invitation.email,
+          invitation.organization.name,
+          invitation.role,
+          invitation.token,
+          inviterName,
+        )
+        .catch(() => {});
     } catch {}
 
     return {

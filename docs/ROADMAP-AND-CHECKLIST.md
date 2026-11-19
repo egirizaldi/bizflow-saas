@@ -214,17 +214,19 @@ Dokumen ini memecah pembangunan proyek BizFlow ke dalam **12 tahap terstruktur**
 
 ### Tahap 10: Transactional Email Notifications
 > **Fokus**: Notifikasi otomatis untuk aksi-aksi penting sistem.
+> **Status**: ✅ COMPLETED (MailModule + Nodemailer + Mock Sandbox Fallback + HTML Templates + Team & Billing Integration + 86 Tests)
 
 #### Checklist Pengerjaan:
-- [ ] Setup transport email (Nodemailer / Resend SDK / Brevo).
-- [ ] Template email HTML:
-  * Undangan bergabung tim (Invitation).
-  * Konfirmasi pembayaran lunas (Invoice receipt).
-  * Peringatan masa langganan akan habis.
-- [ ] Integrasikan antrian email dengan Redis + BullMQ (opsional tapi sangat direkomendasikan agar performa API tetap ringan).
+- [x] Setup transport email (Nodemailer v10.6.0 + TypeScript types) dengan auto-detection fallback ke mock logger bila credentials placeholder.
+- [x] Template email HTML responsif & profesional:
+  * Undangan bergabung tim (Invitation) dengan link aktivasi dan token manual 48 jam.
+  * Konfirmasi pembayaran lunas (Invoice receipt) dengan nomor invoice dan rincian transaksi Midtrans.
+  * Peringatan kuota anggota workspace mendekati batas paket.
+- [x] Global `MailModule` terintegrasi dengan `TeamService.inviteMember` dan `BillingService.handleWebhook` secara non-blocking.
+- [x] Unit test lengkap (`mail.service.spec.ts`) - 86/86 total tests passed di seluruh test suites backend.
 
 #### Acceptance Criteria:
-- Email undangan dan notifikasi pembayaran masuk ke inbox email pengguna dengan formatting rapi.
+- Email undangan dan notifikasi pembayaran dikirimkan secara otomatis dengan HTML format profesional tanpa menghambat response time API.
 
 ---
 

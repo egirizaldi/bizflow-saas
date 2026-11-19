@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BillingService } from './billing.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from '../mail/mail.service.js';
 import {
   BadRequestException,
   ForbiddenException,
@@ -15,6 +16,7 @@ describe('BillingService (Midtrans Payment Gateway & Webhook)', () => {
   let service: BillingService;
   let prisma: any;
   let configService: any;
+  let mailService: any;
   const SERVER_KEY = 'SB-Mid-server-testkey';
 
   const calcSignature = (orderId: string, statusCode: string, grossAmount: string) => {
@@ -24,6 +26,12 @@ describe('BillingService (Midtrans Payment Gateway & Webhook)', () => {
   };
 
   beforeEach(async () => {
+    mailService = {
+      sendInvitationEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+      sendPaymentReceiptEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+      sendQuotaWarningEmail: vi.fn().mockResolvedValue({ success: true, isMock: true }),
+    };
+
     prisma = {
       plan: {
         findUnique: vi.fn(),
@@ -36,6 +44,7 @@ describe('BillingService (Midtrans Payment Gateway & Webhook)', () => {
       },
       user: {
         findUnique: vi.fn(),
+        findFirst: vi.fn().mockResolvedValue({ email: 'owner@test.com' }),
       },
       payment: {
         create: vi.fn(),
@@ -76,6 +85,7 @@ describe('BillingService (Midtrans Payment Gateway & Webhook)', () => {
         BillingService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: configService },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
